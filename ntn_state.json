@@ -1,0 +1,6 @@
+{
+  "delay_ms": 25,
+  "loss": 0.01,
+  "snr_db": 22.5,
+  "serving_satellite": "STARLINK-2692"
+}
