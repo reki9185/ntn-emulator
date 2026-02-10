@@ -1,4 +1,4 @@
-package ntnemulator
+package gtp
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"ntn-emulator/ue/tun"
 )
 
 // GTPTunnel represents a GTP-U tunnel
@@ -16,7 +18,7 @@ type GTPTunnel struct {
 	remoteTEID uint32
 	upfAddr    *net.UDPAddr
 	conn       *net.UDPConn
-	tunIface   *TUNInterface
+	tunIface   *tun.TUNInterface
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -24,7 +26,7 @@ type GTPTunnel struct {
 }
 
 // NewGTPTunnel creates a new GTP-U tunnel
-func NewGTPTunnel(localTEID, remoteTEID uint32, upfIP string, upfPort int, tunIface *TUNInterface) (*GTPTunnel, error) {
+func NewGTPTunnel(localTEID, remoteTEID uint32, upfIP string, upfPort int, tunIface *tun.TUNInterface) (*GTPTunnel, error) {
 	// Resolve UPF address (remote)
 	upfAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", upfIP, upfPort))
 	if err != nil {
@@ -73,7 +75,7 @@ func NewGTPTunnel(localTEID, remoteTEID uint32, upfIP string, upfPort int, tunIf
 
 // NewGTPTunnelWithN3IP creates a new GTP-U tunnel with specific N3 IP binding
 // This is the free-ran-ue pattern: UE binds to a specific local IP for N3
-func NewGTPTunnelWithN3IP(localTEID, remoteTEID uint32, upfAddr string, n3IP string, tunIface *TUNInterface) (*GTPTunnel, error) {
+func NewGTPTunnelWithN3IP(localTEID, remoteTEID uint32, upfAddr string, n3IP string, tunIface *tun.TUNInterface) (*GTPTunnel, error) {
 	// Parse UPF address (e.g., "127.0.0.1:2152")
 	upfUDPAddr, err := net.ResolveUDPAddr("udp", upfAddr)
 	if err != nil {

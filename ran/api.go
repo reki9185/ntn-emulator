@@ -1,4 +1,4 @@
-package ntnemulator
+package ran
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+
+	"ntn-emulator/ran/link"
 )
 
 // UERegistrationRequest is the request to register UE with gNB
@@ -17,12 +19,12 @@ type UERegistrationRequest struct {
 
 // GNBRegistrationAPI provides HTTP API for UE registration
 type GNBRegistrationAPI struct {
-	gnb    *GNBDataPlane
+	gnb    *link.GNBDataPlane
 	server *http.Server
 }
 
 // NewGNBRegistrationAPI creates a new registration API server
-func NewGNBRegistrationAPI(gnb *GNBDataPlane, listenAddr string) *GNBRegistrationAPI {
+func NewGNBRegistrationAPI(gnb *link.GNBDataPlane, listenAddr string) *GNBRegistrationAPI {
 	api := &GNBRegistrationAPI{
 		gnb: gnb,
 	}

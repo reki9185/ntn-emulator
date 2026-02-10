@@ -1,4 +1,4 @@
-package ntnemulator
+package link
 
 import (
 	"context"

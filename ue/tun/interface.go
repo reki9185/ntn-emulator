@@ -1,4 +1,4 @@
-package ntnemulator
+package tun
 
 import (
 	"fmt"

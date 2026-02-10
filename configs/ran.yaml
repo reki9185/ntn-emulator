@@ -1,0 +1,41 @@
+# RAN Configuration
+
+# gNB Identity
+gnb:
+  id: "000102"  # 3-byte gNB ID
+  name: "NTN-SAT-STARLINK"
+  tac: 1  # Must match AMF supportTaiList
+
+# AMF Connection (N2)
+amf:
+  n2_ip: "10.0.1.1"
+  n2_port: 38412
+
+# RAN N2 Interface
+ran_n2:
+  ip: "10.0.1.2"
+  port: 38413
+
+# RAN Data Plane
+dataplane:
+  # UE connection (receives from UE)
+  ue_ip: "10.0.2.1"
+  ue_port: 31414
+  
+  # N3 Interface (GTP-U to UPF)
+  n3_ip: "10.0.1.2"
+  n3_port: 2152
+
+# UPF N3 Endpoint
+upf:
+  n3_ip: "10.0.1.1"
+  n3_port: 2152
+
+# Default UE Configuration
+default_ue:
+  n3_ip: "127.0.0.100"  # Per-UE unique IP for GTP-U
+
+# NTN Link
+ntn_link:
+  state_file: "/home/ntn/ntn-emulator/ntn_state.json"
+  poll_interval_ms: 100

@@ -9,7 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	ntnemulator "ntn/ntn-emulator"
+	"ntn-emulator/ran"
+	ranlink "ntn-emulator/ran/link"
+	"ntn-emulator/ran/ngap"
+	"ntn-emulator/ue"
+	uenas "ntn-emulator/ue/nas"
+
 	"test"
 	"test/consumerTestdata/UDM/TestGenAuthData"
 
@@ -62,16 +67,16 @@ func main() {
 
 	// Create UE Context
 	supi := fmt.Sprintf("imsi-%s", *imsi)
-	ue := ntnemulator.NewUEContext(supi, 1)
+	uectx := ue.NewUEContext(supi, 1)
 
 	// Set authentication subscription (using TestGenAuthData from free5GC)
-	ue.AuthenticationSubs = test.GetAuthSubscription(
+	uectx.AuthenticationSubs = test.GetAuthSubscription(
 		TestGenAuthData.MilenageTestSet19.K,
 		TestGenAuthData.MilenageTestSet19.OPC,
 		TestGenAuthData.MilenageTestSet19.OP)
 
 	// Create NGAP Client
-	ngapClient := ntnemulator.NewNGAPClient(amfN2IP, ranN2IP, amfN2Port, ranN2Port)
+	ngapClient := ngap.NewNGAPClient(amfN2IP, ranN2IP, amfN2Port, ranN2Port)
 
 	// Connect to AMF
 	log.Println("\n[Step 1] Connecting to AMF...")
@@ -84,7 +89,7 @@ func main() {
 	// Perform NG Setup
 	log.Println("\n[Step 2] Performing NG Setup...")
 	gnbName := fmt.Sprintf("NTN-SAT-%s", *satellite)
-	ngSetup := ntnemulator.NewNGSetupHandler(ngapClient, []byte(gnbID), gnbName, gnbTAC)
+	ngSetup := ngap.NewNGSetupHandler(ngapClient, []byte(gnbID), gnbName, gnbTAC)
 	if err := ngSetup.PerformNGSetup(); err != nil {
 		log.Fatalf("NG Setup failed: %v", err)
 	}
@@ -92,16 +97,16 @@ func main() {
 
 	// Perform UE Registration
 	log.Println("\n[Step 3] Performing UE Registration...")
-	nasCodec := ntnemulator.NewNASCodec(ue)
-	regHandler := ntnemulator.NewRegistrationHandler(ue, nasCodec, ngapClient)
+	nasCodec := uenas.NewNASCodec(uectx)
+	regHandler := uenas.NewRegistrationHandler(uectx, nasCodec, ngapClient)
 	if err := regHandler.PerformRegistration(); err != nil {
 		log.Fatalf("UE Registration failed: %v", err)
 	}
-	log.Printf("✓ UE Registration successful (SUPI: %s)\n", ue.Supi)
+	log.Printf("✓ UE Registration successful (SUPI: %s)\n", uectx.Supi)
 
 	// Perform PDU Session Establishment
 	log.Println("\n[Step 4] Performing PDU Session Establishment...")
-	pduHandler := ntnemulator.NewPDUSessionHandler(ue, nasCodec, ngapClient)
+	pduHandler := ran.NewPDUSessionHandler(uectx, nasCodec, ngapClient)
 	snssai := &models.Snssai{Sst: 1, Sd: "010203"}
 
 	// Pass RAN N3 IP to PDU handler (RAN will receive GTP-U downlink at this address)
@@ -110,10 +115,10 @@ func main() {
 	}
 
 	log.Printf("✓ PDU Session established (ID: %d, DNN: %s)\n", 1, "internet")
-	log.Printf("✓ UE IP Address: %s\n", ue.UEIPAddress)
+	log.Printf("✓ UE IP Address: %s\n", uectx.UEIPAddress)
 	log.Printf("✓ RAN N3 IP (for GTP-U): %s:%d\n", ranN3IP, ranN3Port)
-	log.Printf("✓ UPF TEID: 0x%08x\n", ue.UPFTEID)
-	log.Printf("✓ RAN TEID: 0x%08x\n", ue.RANTEID)
+	log.Printf("✓ UPF TEID: 0x%08x\n", uectx.UPFTEID)
+	log.Printf("✓ RAN TEID: 0x%08x\n", uectx.RANTEID)
 
 	log.Println("\n========================================")
 	log.Println("✅ RAN Control Plane Setup Completed!")
@@ -121,15 +126,15 @@ func main() {
 
 	// Start RAN Data Plane Server (like free-ran-ue)
 	log.Println("\n[Step 5] Starting RAN Data Plane Server...")
-	dataPlane, err := ntnemulator.NewRANDataPlane(
+	dataPlane, err := ranlink.NewRANDataPlane(
 		ranDataPlaneIP,
 		ranDataPlanePort,
 		ranN3IP,
 		ranN3Port,
 		upfN3Addr,
-		uint32(ue.RANTEID), // UL TEID (RAN->UPF)
-		uint32(ue.UPFTEID), // DL TEID (UPF->RAN)
-		ue.Supi,
+		uint32(uectx.RANTEID), // UL TEID (RAN->UPF)
+		uint32(uectx.UPFTEID), // DL TEID (UPF->RAN)
+		uectx.Supi,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create RAN data plane: %v", err)
@@ -151,7 +156,7 @@ func main() {
 	log.Println("  go build -o /tmp/ntn_ue cmd_ue.go")
 	log.Println("\nThen run with sudo:")
 	log.Printf("  sudo /tmp/ntn_ue -ue-ip %s -ran-addr %s:%d -imsi %s\n",
-		ue.UEIPAddress, ranDataPlaneIP, ranDataPlanePort, *imsi)
+		uectx.UEIPAddress, ranDataPlaneIP, ranDataPlanePort, *imsi)
 
 	log.Println("\n📡 RAN is ACTIVE (Control + Data Plane) - Press Ctrl+C to stop")
 

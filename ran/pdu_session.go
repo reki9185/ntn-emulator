@@ -1,8 +1,12 @@
-package ntnemulator
+package ran
 
 import (
 	"bytes"
 	"fmt"
+
+	"ntn-emulator/ran/ngap"
+	"ntn-emulator/ue"
+	uenas "ntn-emulator/ue/nas"
 
 	"github.com/free5gc/nas"
 	"github.com/free5gc/nas/nasMessage"
@@ -12,15 +16,15 @@ import (
 
 // PDUSessionHandler handles PDU Session Establishment procedure
 type PDUSessionHandler struct {
-	ue     *UEContext
-	codec  *NASCodec
-	client *NGAPClient
+	ue     *ue.UEContext
+	codec  *uenas.NASCodec
+	client *ngap.NGAPClient
 }
 
 // NewPDUSessionHandler creates a new PDU Session handler
-func NewPDUSessionHandler(ue *UEContext, codec *NASCodec, client *NGAPClient) *PDUSessionHandler {
+func NewPDUSessionHandler(uectx *ue.UEContext, codec *uenas.NASCodec, client *ngap.NGAPClient) *PDUSessionHandler {
 	return &PDUSessionHandler{
-		ue:     ue,
+		ue:     uectx,
 		codec:  codec,
 		client: client,
 	}
@@ -28,7 +32,7 @@ func NewPDUSessionHandler(ue *UEContext, codec *NASCodec, client *NGAPClient) *P
 
 // EstablishPDUSession performs PDU Session Establishment procedure
 func (h *PDUSessionHandler) EstablishPDUSession(pduSessionID uint8, dnn string, sNssai *models.Snssai) error {
-	h.ue.SetState(UEStateEstablishingPDU)
+	h.ue.SetState(ue.UEStateEstablishingPDU)
 	h.ue.PDUSessionID = pduSessionID
 
 	// Step 1: Build and send PDU Session Establishment Request
@@ -46,7 +50,7 @@ func (h *PDUSessionHandler) EstablishPDUSession(pduSessionID uint8, dnn string, 
 		return fmt.Errorf("failed to receive PDU session establishment accept: %w", err)
 	}
 
-	h.ue.SetState(UEStatePDUActive)
+	h.ue.SetState(ue.UEStatePDUActive)
 	return nil
 }
 
@@ -110,7 +114,7 @@ func (h *PDUSessionHandler) receivePDUSessionEstablishmentAccept() error {
 		if msgType == 0xD4 {
 			fmt.Println("Received Configuration Update Command, sending Complete...")
 			// Handle Configuration Update - send Configuration Update Complete
-			updateComplete, err := BuildConfigurationUpdateComplete()
+			updateComplete, err := uenas.BuildConfigurationUpdateComplete()
 			if err != nil {
 				return fmt.Errorf("failed to build configuration update complete: %w", err)
 			}
@@ -369,7 +373,7 @@ func (h *PDUSessionHandler) extractUEIPFromNASPdu(nasPdu []byte) (string, error)
 // EstablishPDUSessionForSeparateUE performs PDU Session Establishment for separated UE/RAN architecture
 // This is used when UE runs as a separate process
 func (h *PDUSessionHandler) EstablishPDUSessionForSeparateUE(pduSessionID uint8, dnn string, sNssai *models.Snssai, ueN3IP string) error {
-	h.ue.SetState(UEStateEstablishingPDU)
+	h.ue.SetState(ue.UEStateEstablishingPDU)
 	h.ue.PDUSessionID = pduSessionID
 
 	// Step 1: Build and send PDU Session Establishment Request
@@ -385,7 +389,7 @@ func (h *PDUSessionHandler) EstablishPDUSessionForSeparateUE(pduSessionID uint8,
 	// Note: In separated architecture, RAN doesn't wait for PDU Session Establishment Accept
 	// The UE process will handle that separately when it connects
 
-	h.ue.SetState(UEStatePDUActive)
+	h.ue.SetState(ue.UEStatePDUActive)
 	return nil
 }
 

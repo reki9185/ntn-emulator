@@ -1,12 +1,14 @@
-package ntnemulator
+package nas
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 
+	"ntn-emulator/ue"
+
 	"test"
-	
+
 	"github.com/free-ran-ue/util"
 	"github.com/free5gc/nas"
 	"github.com/free5gc/nas/nasMessage"
@@ -16,12 +18,12 @@ import (
 
 // NASCodec handles NAS message encoding and decoding
 type NASCodec struct {
-	ue *UEContext
+	ue *ue.UEContext
 }
 
 // NewNASCodec creates a new NAS codec for the given UE context
-func NewNASCodec(ue *UEContext) *NASCodec {
-	return &NASCodec{ue: ue}
+func NewNASCodec(uectx *ue.UEContext) *NASCodec {
+	return &NASCodec{ue: uectx}
 }
 
 // Decode decodes a NAS message with security
@@ -47,7 +49,7 @@ func (nc *NASCodec) Encode(nasMessage *nas.Message, securityHeaderType uint8,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return test.EncodeNasPduWithSecurity(nc.ue.RanUeContext, payload, securityHeaderType, true, newSecurityContext)
 }
 
@@ -232,10 +234,10 @@ func BuildIdentityResponseWithType(supi string, identityType uint8) ([]byte, err
 	identityResponse.SetExtendedProtocolDiscriminator(nasMessage.Epd5GSMobilityManagementMessage)
 	identityResponse.SetSecurityHeaderType(nas.SecurityHeaderTypePlainNas)
 	identityResponse.SetMessageType(nas.MsgTypeIdentityResponse)
-	
+
 	// Build Mobile Identity based on requested type
 	var mobileIdentity nasType.MobileIdentity
-	
+
 	switch identityType {
 	case nasMessage.MobileIdentity5GSTypeSuci: // Type 1: SUCI (SUPI)
 		mobileIdentity5GS := BuildMobileIdentity5GS(supi)
@@ -280,7 +282,7 @@ func BuildIdentityResponseWithType(supi string, identityType uint8) ([]byte, err
 			Buffer: mobileIdentity5GS.Buffer,
 		}
 	}
-	
+
 	identityResponse.MobileIdentity = mobileIdentity
 
 	m.GmmMessage.IdentityResponse = identityResponse

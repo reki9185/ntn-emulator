@@ -1,0 +1,26 @@
+# UE Configuration
+
+# UE Identity
+imsi: "208930000000001"
+supi: "imsi-208930000000001"
+
+# Network Parameters
+dnn: "internet"
+snssai:
+  sst: 1
+  sd: "010203"
+
+# TUN Interface
+tun:
+  name: "uetun0"
+  ip: "10.60.0.1"  # Assigned by PDU session
+
+# Data Plane
+dataplane:
+  ran_address: "127.0.0.1:9487"
+  protocol: "udp"  # Raw IP over UDP to RAN
+
+# NTN Link (optional - for future integration)
+ntn_link:
+  state_file: "/home/ntn/ntn-emulator/ntn_state.json"
+  poll_interval_ms: 100

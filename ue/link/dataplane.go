@@ -1,4 +1,4 @@
-package ntnemulator
+package uelink
 
 import (
 	"context"
@@ -6,6 +6,13 @@ import (
 	"log"
 	"net"
 	"sync"
+
+	"ntn-emulator/ue/tun"
+)
+
+const (
+	UE_DATA_PLANE_INITIAL_PACKET = "INIT"
+	UE_IMSI_PREFIX               = "imsi-"
 )
 
 // UEDataPlane handles UE side data plane communication (like free-ran-ue)
@@ -13,7 +20,7 @@ import (
 type UEDataPlane struct {
 	ranAddr  *net.UDPAddr
 	imsi     string
-	tunIface *TUNInterface
+	tunIface *tun.TUNInterface
 
 	// Network connection
 	ranConn *net.UDPConn
@@ -28,7 +35,7 @@ type UEDataPlane struct {
 }
 
 // NewUEDataPlane creates a new UE data plane handler
-func NewUEDataPlane(ranAddr string, imsi string, tunIface *TUNInterface) (*UEDataPlane, error) {
+func NewUEDataPlane(ranAddr string, imsi string, tunIface *tun.TUNInterface) (*UEDataPlane, error) {
 	// Parse RAN address
 	ranUDPAddr, err := net.ResolveUDPAddr("udp", ranAddr)
 	if err != nil {

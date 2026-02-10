@@ -30,36 +30,114 @@ This repository implements:
 
 ---
 
+## Demo
+
+### Build
+
+```bash
+cd /home/ntn/ntn-emulator
+
+go mod tidy
+go mod download
+
+# Build RAN executable
+go build -o /tmp/ntn_ran ./cmd/ran.go
+
+# Build UE executable  
+go build -o /tmp/ntn_ue ./cmd/ue.go
+```
+
+### Test
+
+```bash
+go run test_watcher.go
+```
+
+### Run
+
+1. Start free5GC
+
+2. Register UE in webconsole
+- Open http://localhost:5000
+- Add subscriber with IMSI: `208930000000001`
+
+3. Start RAN
+
+```bash
+/tmp/ntn_ran \
+  -imsi 208930000000001 \
+  -satellite STARLINK-2692 \
+  -ue-n3-ip 127.0.0.100
+```
+
+This will:
+- Connect to AMF via NGAP
+- Perform NG Setup
+- Register UE
+- Establish PDU session
+- Start RAN data plane server
+
+4. Start UE
+
+```bash
+sudo /tmp/ntn_ue \
+  -ue-ip <IP_FROM_STEP3> \
+  -ran-addr 10.0.2.1:31414 \
+  -imsi 208930000000001
+```
+
+5. Test connectivity
+
+```bash
+# In UE namespace
+ping -I uetun0 8.8.8.8
+```
+
+---
+
 ## Repository Structure
 
 ```
 ntn-emulator/
-├── README.md
-|
-├── configs/
-│ ├── ue.yaml
-│ ├── ran.yaml
-│ └── ntn-link.yaml
+├── cmd/                    # Main executables
+│   ├── ran.go             # RAN control plane (was: cmd_ran.go)
+│   └── ue.go              # UE data plane (was: cmd_ue.go)
 │
-├── ntn-link/
-│ ├── link.go
-│ ├── delay.go
-│ ├── scheduler.go # Packet scheduling queue
-│ └── json_watcher.go # ns-3 link-state reader
+├── configs/               # Configuration templates
+│   ├── ue.yaml
+│   ├── ran.yaml
+│   └── ntn-link.yaml
 │
-├── ran/
-│ ├── ngap/
-│ ├── rrc/
-│ ├── gtp/
-│ └── link/
+├── ntn-link/              # NTN link emulation
+│   ├── json_watcher.go    # NEW: ns-3 state monitor
+│   ├── link.go            # NEW: Link abstraction
+│   ├── delay.go           # NEW: Delay models
+│   ├── scheduler.go       # NEW: Packet scheduler
+│   └── README.md          # NEW: Module documentation
 │
-├── ue/
-│ ├── nas/
-│ ├── rrc/
-│ ├── tun/
-│ └── link/
+├── ran/                   # RAN components
+│   ├── api.go             # gNB API (was: gnb_api.go)
+│   ├── pdu_session.go     # PDU session handling
+│   ├── ngap/
+│   │   ├── client.go      # NGAP client (was: ngap_client.go)
+│   │   └── setup.go       # NG Setup (was: ng_setup.go)
+│   ├── gtp/
+│   │   └── tunnel.go      # GTP-U tunnel (was: gtp.go)
+│   ├── link/
+│   │   ├── dataplane.go   # RAN data plane (was: ran_dataplane.go)
+│   │   └── gnb_dataplane.go
+│   └── rrc/               # NEW: Directory for RRC (not implemented)
 │
-└──────
+└── ue/                    # UE components
+    ├── context.go         # UE context (was: ue_context.go)
+    ├── nas/
+    │   ├── codec.go       # NAS codec (was: nas_codec.go)
+    │   └── registration.go # Registration (was: registration.go)
+    ├── tun/
+    │   └── interface.go   # TUN interface (was: tun.go)
+    ├── link/
+    │   └── dataplane.go   # UE data plane (was: ue_dataplane.go)
+    └── rrc/               # NEW: Directory for RRC (not implemented)
 ```
 
 ---
@@ -75,15 +153,11 @@ ntn-emulator/
 Example output:
 ```json
 {
-  "timestamp": 120.5,
-  "satellite_id": "SAT-08",
-  "delay_ms": 42.3,
-  "jitter_ms": 3.1,
-  "rsrp": -95,
-  "doppler_hz": 980
+  "timestamp": 120,
+  "serving_satellite": "STARLINK-2692",
+  "delay_ms": 3
 }
 ```
-
 
 ntn-emulator continuously monitors this output and updates its internal link model.
 
@@ -93,26 +167,37 @@ https://free5gc.org/guide/3-install-free5gc/
 
 ---
 
-⏱️ NTN-Link: The Only Place Where Delay Exists
-
-All control-plane and data-plane traffic passes through the NTN-Link:
-
-- NGAP (N2)
-- GTP-U (N3)
-- RRC signaling
-- NAS messages
-
-Packets are enqueued and released by the NTN-Link scheduler:
+## Architecture Flow
 
 ```
-Send() → Queue → Delay Model → Scheduler → Socket
+┌─────────────┐
+│   ns-3      │ ← Physical layer simulation
+│ (satellite) │
+└──────┬──────┘
+       │ ntn_state.json (delay, satellite ID)
+       ↓
+┌─────────────────────────────────────────┐
+│          ntn-link (emulator)            │
+│  - json_watcher: monitors state         │
+│  - scheduler: applies NTN delay         │
+│  - delay models: propagation delay      │
+└──────┬──────────────────────────────────┘
+       │
+       ↓
+┌──────────────┐         ┌──────────────┐
+│  RAN (cp)    │←──N2───→│   free5GC    │
+│  cmd/ran.go  │         │   (AMF/SMF)  │
+└──────┬───────┘         └──────┬───────┘
+       │                        │
+       │ raw IP/UDP             │ N3 (GTP-U)
+       ↓                        ↓
+┌──────────────┐         ┌──────────────┐
+│  UE (dp)     │         │  UPF         │
+│  cmd/ue.go   │         │              │
+└──────┬───────┘         └──────┬───────┘
+       │                        │
+       └────────Internet────────┘
 ```
-
-This guarantees:
-
-- Consistent delay across planes
-- Clean protocol logic
-- Easy replacement of delay models
 
 ---
 

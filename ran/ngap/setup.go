@@ -1,4 +1,4 @@
-package ntnemulator
+package ngap
 
 import (
 	"fmt"
@@ -93,11 +93,11 @@ func (h *NGSetupHandler) buildNGSetupRequest() ([]byte, error) {
 	pdu.InitiatingMessage.Value.NGSetupRequest.ProtocolIEs.List = append(
 		pdu.InitiatingMessage.Value.NGSetupRequest.ProtocolIEs.List,
 		ngapType.NGSetupRequestIEs{
-				Id:          ngapType.ProtocolIEID{Value: ngapType.ProtocolIEIDGlobalRANNodeID},
+			Id:          ngapType.ProtocolIEID{Value: ngapType.ProtocolIEIDGlobalRANNodeID},
 			Criticality: ngapType.Criticality{Value: ngapType.CriticalityPresentReject},
 			Value: ngapType.NGSetupRequestIEsValue{
-				Present:           ngapType.NGSetupRequestIEsPresentGlobalRANNodeID,
-				GlobalRANNodeID:   &globalRANNodeID,
+				Present:         ngapType.NGSetupRequestIEsPresentGlobalRANNodeID,
+				GlobalRANNodeID: &globalRANNodeID,
 			},
 		},
 	)
@@ -127,8 +127,8 @@ func (h *NGSetupHandler) buildNGSetupRequest() ([]byte, error) {
 			Id:          ngapType.ProtocolIEID{Value: ngapType.ProtocolIEIDSupportedTAList},
 			Criticality: ngapType.Criticality{Value: ngapType.CriticalityPresentReject},
 			Value: ngapType.NGSetupRequestIEsValue{
-				Present:          ngapType.NGSetupRequestIEsPresentSupportedTAList,
-				SupportedTAList:  &supportedTAList,
+				Present:         ngapType.NGSetupRequestIEsPresentSupportedTAList,
+				SupportedTAList: &supportedTAList,
 			},
 		},
 	)

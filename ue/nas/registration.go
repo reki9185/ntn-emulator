@@ -1,7 +1,10 @@
-package ntnemulator
+package nas
 
 import (
 	"fmt"
+
+	"ntn-emulator/ran/ngap"
+	"ntn-emulator/ue"
 
 	"github.com/free5gc/nas"
 	"github.com/free5gc/nas/nasMessage"
@@ -9,15 +12,15 @@ import (
 
 // RegistrationHandler handles UE Registration procedure
 type RegistrationHandler struct {
-	ue     *UEContext
+	ue     *ue.UEContext
 	codec  *NASCodec
-	client *NGAPClient
+	client *ngap.NGAPClient
 }
 
 // NewRegistrationHandler creates a new Registration handler
-func NewRegistrationHandler(ue *UEContext, codec *NASCodec, client *NGAPClient) *RegistrationHandler {
+func NewRegistrationHandler(uectx *ue.UEContext, codec *NASCodec, client *ngap.NGAPClient) *RegistrationHandler {
 	return &RegistrationHandler{
-		ue:     ue,
+		ue:     uectx,
 		codec:  codec,
 		client: client,
 	}
@@ -25,7 +28,7 @@ func NewRegistrationHandler(ue *UEContext, codec *NASCodec, client *NGAPClient) 
 
 // PerformRegistration performs the complete UE Registration procedure
 func (h *RegistrationHandler) PerformRegistration() error {
-	h.ue.SetState(UEStateRegistering)
+	h.ue.SetState(ue.UEStateRegistering)
 
 	// Step 1: Send Registration Request
 	if err := h.sendRegistrationRequest(); err != nil {
@@ -53,7 +56,7 @@ func (h *RegistrationHandler) PerformRegistration() error {
 		fmt.Printf("Warning: Configuration update handling: %v\n", err)
 	}
 
-	h.ue.SetState(UEStateRegistered)
+	h.ue.SetState(ue.UEStateRegistered)
 	return nil
 }
 
@@ -218,7 +221,7 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 	// Check if we received Identity Request first (message type 0x5B = 91)
 	msgType := nasPdu.GmmHeader.GetMessageType()
 	fmt.Printf("DEBUG: Received message type: %d (0x%02X)\n", msgType, msgType)
-	
+
 	if msgType == 91 { // Identity Request (0x5B)
 		// Check what type of identity is requested
 		var requestedType uint8
@@ -228,15 +231,15 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 		} else {
 			return fmt.Errorf("Identity Request message is nil")
 		}
-		
+
 		fmt.Println("Received Identity Request, sending Identity Response...")
-		
+
 		// Build and send Identity Response with requested identity type
 		identityResponse, err := BuildIdentityResponseWithType(h.ue.Supi, requestedType)
 		if err != nil {
 			return fmt.Errorf("failed to build identity response: %w", err)
 		}
-		
+
 		fmt.Printf("DEBUG: Identity Response payload (first 32 bytes): %02x\n", identityResponse[:min(32, len(identityResponse))])
 
 		// Encode with security
@@ -250,14 +253,14 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 		if err != nil {
 			return fmt.Errorf("failed to encode identity response: %w", err)
 		}
-		
+
 		fmt.Printf("DEBUG: Encoded Identity Response (first 32 bytes): %02x\n", encodedMsg[:min(32, len(encodedMsg))])
 
 		err = h.client.SendUplinkNASTransport(h.ue.AmfUeNgapId, h.ue.RanUeNgapId, encodedMsg)
 		if err != nil {
 			return fmt.Errorf("failed to send identity response: %w", err)
 		}
-		
+
 		fmt.Println("Identity Response sent successfully")
 
 		// Now receive the actual Registration Accept (in Initial Context Setup Request)
@@ -271,7 +274,7 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 		if err != nil {
 			return fmt.Errorf("failed to decode NAS message: %w", err)
 		}
-		
+
 		msgType = nasPdu.GmmHeader.GetMessageType()
 		fmt.Printf("DEBUG: After Identity Response, received message type: %d (0x%02X)\n", msgType, msgType)
 	}
@@ -344,4 +347,3 @@ func (h *RegistrationHandler) handleConfigurationUpdate() error {
 
 	return nil
 }
-

@@ -1,0 +1,34 @@
+# NTN Link Configuration
+
+# State monitoring
+state:
+  file: "/home/ntn/ntn-emulator/ntn_state.json"
+  poll_interval_ms: 100  # How often to check for updates
+
+# Delay Model
+delay:
+  # Default values (overridden by ns-3 state)
+  default_delay_ms: 50
+  default_jitter_ms: 5
+  
+  # Delay application
+  apply_to_control_plane: true  # NGAP, NAS
+  apply_to_user_plane: true     # GTP-U
+  
+# Scheduler
+scheduler:
+  queue_size: 1000
+  tick_interval_ms: 1  # How often to check for ready packets
+
+# Handover
+handover:
+  enabled: true
+  trigger_on_satellite_change: true
+  # If delay changes > threshold, trigger measurement report
+  delay_change_threshold_ms: 10
+
+# Logging
+log:
+  state_changes: true
+  delay_updates: true
+  handovers: true

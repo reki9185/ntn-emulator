@@ -1,6 +1,9 @@
-package ntnemulator
+package ue
 
 import (
+	"ntn-emulator/ran/gtp"
+	"ntn-emulator/ue/tun"
+
 	"test"
 
 	"github.com/free5gc/nas/security"
@@ -12,8 +15,8 @@ type UEContext struct {
 	*test.RanUeContext
 
 	// User plane related fields
-	TunInterface *TUNInterface
-	GTPTunnel    *GTPTunnel // OLD: direct GTP tunnel to UPF (deprecated for free-ran-ue pattern)
+	TunInterface *tun.TUNInterface
+	GTPTunnel    *gtp.GTPTunnel // OLD: direct GTP tunnel to UPF (deprecated for free-ran-ue pattern)
 	UEIPAddress  string
 	PDUSessionID uint8
 

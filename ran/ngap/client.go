@@ -1,9 +1,11 @@
-package ntnemulator
+package ngap
 
 import (
 	"encoding/binary"
 	"fmt"
 	"net"
+
+	"ntn-emulator/ran/gtp"
 
 	"github.com/free5gc/aper"
 	"github.com/free5gc/ngap"
@@ -375,7 +377,7 @@ func (c *NGAPClient) decodePDUSessionResourceSetupRequestTransfer(transferBytes 
 				tunnel := ie.Value.ULNGUUPTNLInformation.GTPTunnel
 
 				// Extract TEID
-				teid, err := ParseTEID(tunnel.GTPTEID.Value)
+				teid, err := gtp.ParseTEID(tunnel.GTPTEID.Value)
 				if err != nil {
 					return nil, fmt.Errorf("failed to parse TEID: %w", err)
 				}

@@ -7,7 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	ntnemulator "ntn/ntn-emulator"
+	uelink "ntn-emulator/ue/link"
+	"ntn-emulator/ue/tun"
 )
 
 func main() {
@@ -38,7 +39,7 @@ func main() {
 
 	// Create TUN interface
 	log.Println("\n[Step 1] Creating TUN interface...")
-	tunIface, err := ntnemulator.NewTUNInterface(*tunName, *ueIP)
+	tunIface, err := tun.NewTUNInterface(*tunName, *ueIP)
 	if err != nil {
 		log.Fatalf("Failed to create TUN interface: %v", err)
 	}
@@ -47,7 +48,7 @@ func main() {
 
 	// Create UE Data Plane (simple UDP to RAN, no GTP)
 	log.Println("\n[Step 2] Connecting to RAN data plane...")
-	ueDataPlane, err := ntnemulator.NewUEDataPlane(*ranAddr, *imsi, tunIface)
+	ueDataPlane, err := uelink.NewUEDataPlane(*ranAddr, *imsi, tunIface)
 	if err != nil {
 		tunIface.Close()
 		log.Fatalf("Failed to create UE data plane: %v", err)
