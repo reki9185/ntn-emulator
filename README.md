@@ -61,36 +61,27 @@ go run test_watcher.go
 - Open http://localhost:5000
 - Add subscriber with IMSI: `208930000000001`
 
-3. Start RAN
+3. Start ntn-emulator
 
 ```bash
-/tmp/ntn_ran \
-  -imsi 208930000000001 \
-  -satellite STARLINK-2692 \
-  -ue-n3-ip 127.0.0.100
+# Create namespace
+sudo ./setup.sh
+
+# Clear namespace
+sudo ./down.sh
+
+# Start ran
+sudo ip netns exec ns3 /tmp/ntn_ran
+
+# Start UE
+sudo /tmp/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
 ```
 
-This will:
-- Connect to AMF via NGAP
-- Perform NG Setup
-- Register UE
-- Establish PDU session
-- Start RAN data plane server
-
-4. Start UE
-
-```bash
-sudo /tmp/ntn_ue \
-  -ue-ip <IP_FROM_STEP3> \
-  -ran-addr 10.0.2.1:31414 \
-  -imsi 208930000000001
-```
-
-5. Test connectivity
+4. Test connectivity
 
 ```bash
 # In UE namespace
-ping -I uetun0 8.8.8.8
+sudo ping -I uetun0 8.8.8.8
 ```
 
 ---
