@@ -1,41 +1,36 @@
-# RAN Configuration
-
-# gNB Identity
 gnb:
-  id: "000102"  # 3-byte gNB ID
-  name: "NTN-SAT-STARLINK"
-  tac: 1  # Must match AMF supportTaiList
+  amfN2Ip: "10.0.1.1" # AMF N2 IP at core network
+  ranN2Ip: "10.0.1.2" # RAN N2 IP for connecting to AMF
+  upfN3Ip: "10.0.1.1" # UPF N3 IP at core network
+  ranN3Ip: "10.0.1.2" # RAN N3 IP for connecting to UPF
 
-# AMF Connection (N2)
-amf:
-  n2_ip: "10.0.1.1"
-  n2_port: 38412
+  ranDataPlaneIp: "10.0.2.1" # RAN Data Plane IP open for UE connection
 
-# RAN N2 Interface
-ran_n2:
-  ip: "10.0.1.2"
-  port: 38413
+  amfN2Port: 38412 # AMF N2 SCTP port at core network
+  ranN2Port: 38413 # RAN N2 SCTP port for connecting to AMF
+  upfN3Port: 2152 # UPF N3 GTP-U port at core network
+  ranN3Port: 2152 # RAN N3 GTP-U port for connecting to UPF
 
-# RAN Data Plane
-dataplane:
-  # UE connection (receives from UE)
-  ue_ip: "10.0.2.1"
-  ue_port: 31414
-  
-  # N3 Interface (GTP-U to UPF)
-  n3_ip: "10.0.1.2"
-  n3_port: 2152
+  ranControlPlanePort: 31413 # RAN Control Plane port open for UE connection
+  ranDataPlanePort: 31414 # RAN Data Plane port open for UE connection
 
-# UPF N3 Endpoint
-upf:
-  n3_ip: "10.0.1.1"
-  n3_port: 2152
+  gnbId: "000314" # gNB ID
+  gnbName: "gNB" # gNB name
+  satellite: "STARLINK-180" # Initial satellite serving the gNB
 
-# Default UE Configuration
-default_ue:
-  n3_ip: "127.0.0.100"  # Per-UE unique IP for GTP-U
+  plmnId:
+    mcc: "208" # Mobile Country Code
+    mnc: "93" # Mobile Network Code
 
-# NTN Link
-ntn_link:
-  state_file: "/home/ntn/ntn-emulator/ntn_state.json"
-  poll_interval_ms: 100
+  tai:
+    tac: "000001" # Tracking Area Code
+    broadcastPlmnId:
+      mcc: "208" # Mobile Country Code
+      mnc: "93" # Mobile Network Code
+
+  snssai:
+    sst: "1" # Slice/Service Type
+    sd: "010203" # Slice Differentiator
+
+logger:
+  level: "info" # error, warn, info, debug, trace, test

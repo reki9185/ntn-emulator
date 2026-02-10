@@ -2,39 +2,60 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"ntn-emulator/config"
 	uelink "ntn-emulator/ue/link"
 	"ntn-emulator/ue/tun"
 )
 
 func main() {
 	// Parse command-line arguments
-	ueIP := flag.String("ue-ip", "", "UE IP address (from PDU session)")
-	ranAddr := flag.String("ran-addr", "127.0.0.1:9487", "RAN data plane address")
-	imsi := flag.String("imsi", "", "UE IMSI")
-	tunName := flag.String("tun", "uetun0", "TUN interface name")
+	configPath := flag.String("config", "configs/ue.yaml", "Path to UE config file")
+	ueIP := flag.String("ue-ip", "", "UE IP address (from PDU session, overrides config)")
+	ranAddr := flag.String("ran-addr", "", "RAN data plane address (overrides config)")
+	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
+	tunName := flag.String("tun", "", "TUN interface name (overrides config)")
 
 	flag.Parse()
 
-	// Validate arguments
-	if *ueIP == "" || *imsi == "" {
+	// Load UE configuration
+	ueCfg, err := config.LoadUEConfig(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load UE config: %v", err)
+	}
+
+	// Use values from command line or config
+	if *imsi == "" {
+		*imsi = ueCfg.GetIMSI()
+	}
+	if *tunName == "" {
+		*tunName = ueCfg.UE.UETunnelDevice
+	}
+	if *ranAddr == "" {
+		*ranAddr = fmt.Sprintf("%s:%d", ueCfg.UE.RANDataPlaneIP, ueCfg.UE.RANDataPlanePort)
+	}
+
+	// Validate UE IP (must be provided)
+	if *ueIP == "" {
 		log.Println("Usage:")
-		log.Println("  1. Build: go build -o /tmp/ntn_ue cmd_ue.go")
-		log.Println("  2. Run: sudo /tmp/ntn_ue -ue-ip <UE_IP> -ran-addr <RAN_ADDR> -imsi <IMSI>")
-		log.Fatal("Missing required parameters")
+		log.Println("  1. Build: go build -o /tmp/ntn_ue ./cmd/ue.go")
+		log.Println("  2. Run: sudo /tmp/ntn_ue -ue-ip <UE_IP> [-config configs/ue.yaml]")
+		log.Fatal("Missing required parameter: -ue-ip")
 	}
 
 	log.Println("========================================")
-	log.Println("NTN UE Data Plane Process (free-ran-ue pattern)")
+	log.Println("NTN UE Data Plane Process")
 	log.Println("========================================")
 	log.Printf("UE IP: %s\n", *ueIP)
 	log.Printf("IMSI: %s\n", *imsi)
 	log.Printf("TUN Interface: %s\n", *tunName)
 	log.Printf("RAN Address: %s\n", *ranAddr)
+	log.Printf("Config: %s\n", *configPath)
 	log.Println("========================================")
 
 	// Create TUN interface

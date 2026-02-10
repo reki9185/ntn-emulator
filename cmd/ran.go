@@ -1,82 +1,105 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"ntn-emulator/config"
 	"ntn-emulator/ran"
 	ranlink "ntn-emulator/ran/link"
 	"ntn-emulator/ran/ngap"
 	"ntn-emulator/ue"
 	uenas "ntn-emulator/ue/nas"
 
-	"test"
-	"test/consumerTestdata/UDM/TestGenAuthData"
-
 	"github.com/free5gc/openapi/models"
-)
-
-const (
-	// AMF and RAN addresses (3-namespace architecture)
-	// Control Plane Network: 10.0.1.x
-	amfN2IP   = "10.0.1.1" // AMF on host
-	ranN2IP   = "10.0.1.2" // RAN Control Plane in ns3 namespace
-	amfN2Port = 38412      // AMF N2 port
-	ranN2Port = 38413      // RAN N2 SCTP port
-
-	// gNB parameters
-	gnbID  = "\x00\x01\x02"
-	gnbTAC = 1 // Must match AMF's supportTaiList (tac: 000001)
-
-	// RAN Data Plane parameters (3-namespace architecture)
-	// User Plane Network: 10.0.2.x (UE <-> RAN)
-	// Control Plane Network: 10.0.1.x (RAN <-> UPF)
-	ranDataPlaneIP   = "10.0.2.1" // RAN Data Plane in ns3 (receives from UE at 10.0.2.2)
-	ranDataPlanePort = 31414      // RAN Data Plane port for UE connection
-	ranN3IP          = "10.0.1.2" // RAN N3 in ns3 (GTP-U to UPF)
-	ranN3Port        = 2152       // RAN N3 GTP-U port
-	upfN3IP          = "10.0.1.1" // UPF N3 on host
-	upfN3Port        = 2152       // UPF N3 GTP-U port
-	upfN3Addr        = "10.0.1.1:2152"
 )
 
 func main() {
 	// Parse command-line arguments
-	imsi := flag.String("imsi", "208930000000001", "UE IMSI")
-	satellite := flag.String("satellite", "UNKNOWN", "Satellite name (NTN identifier)")
+	configPath := flag.String("config", "configs/ran.yaml", "Path to RAN config file")
+	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
+	ueConfigPath := flag.String("ue-config", "configs/ue.yaml", "Path to UE config file (for auth)")
 	ueN3IP := flag.String("ue-n3-ip", "127.0.0.100", "UE N3 IP for GTP-U (unique per UE)")
 	flag.Parse()
+
+	// Load RAN configuration
+	ranCfg, err := config.LoadRANConfig(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load RAN config: %v", err)
+	}
+
+	// Load UE configuration for authentication
+	ueCfg, err := config.LoadUEConfig(*ueConfigPath)
+	if err != nil {
+		log.Fatalf("Failed to load UE config: %v", err)
+	}
+
+	// Use IMSI from command line or config
+	var imsiStr string
+	if *imsi != "" {
+		imsiStr = *imsi
+	} else {
+		imsiStr = ueCfg.GetIMSI()
+	}
+
+	// Use satellite from config if not overridden
+	satellite := ranCfg.GNB.Satellite
 
 	log.Println("========================================")
 	log.Println("NTN RAN Control Plane Process")
 	log.Println("========================================")
-	log.Printf("UE IMSI: %s\n", *imsi)
-	log.Printf("Satellite gNB: %s\n", *satellite)
+	log.Printf("UE IMSI: %s\n", imsiStr)
+	log.Printf("Satellite gNB: %s\n", satellite)
 	log.Printf("UE N3 IP: %s\n", *ueN3IP)
+	log.Printf("Config: %s\n", *configPath)
 	log.Println("========================================")
 	log.Println()
 	log.Println("⚠️  Make sure UE is registered in free5GC webconsole first!")
-	log.Printf("   IMSI: %s\n", *imsi)
+	log.Printf("   IMSI: %s\n", imsiStr)
 	log.Println("   Webconsole: http://localhost:5000")
 	log.Println()
 
 	// Create UE Context
-	supi := fmt.Sprintf("imsi-%s", *imsi)
+	supi := ueCfg.GetSUPI()
 	uectx := ue.NewUEContext(supi, 1)
 
-	// Set authentication subscription (using TestGenAuthData from free5GC)
-	uectx.AuthenticationSubs = test.GetAuthSubscription(
-		TestGenAuthData.MilenageTestSet19.K,
-		TestGenAuthData.MilenageTestSet19.OPC,
-		TestGenAuthData.MilenageTestSet19.OP)
+	// Set authentication subscription from config (manually to use config SQN)
+	uectx.AuthenticationSubs = models.AuthenticationSubscription{
+		AuthenticationMethod:          models.AuthMethod__5_G_AKA,
+		EncPermanentKey:               ueCfg.UE.AuthenticationSubscription.EncPermanentKey,
+		EncOpcKey:                     ueCfg.UE.AuthenticationSubscription.EncOpcKey,
+		AuthenticationManagementField: ueCfg.UE.AuthenticationSubscription.AuthenticationManagementField,
+		SequenceNumber: &models.SequenceNumber{
+			Sqn: ueCfg.UE.AuthenticationSubscription.SequenceNumber,
+		},
+	}
 
-	// Create NGAP Client
-	ngapClient := ngap.NewNGAPClient(amfN2IP, ranN2IP, amfN2Port, ranN2Port)
+	// Parse gNB ID from hex string
+	gnbIDBytes, err := hex.DecodeString(ranCfg.GNB.GNBID)
+	if err != nil {
+		log.Fatalf("Invalid gNB ID in config: %v", err)
+	}
+
+	// Parse TAC from hex string
+	gnbTAC, err := strconv.ParseUint(ranCfg.GNB.TAI.TAC, 16, 64)
+	if err != nil {
+		log.Fatalf("Invalid TAC in config: %v", err)
+	}
+
+	// Create NGAP Client with config values
+	ngapClient := ngap.NewNGAPClient(
+		ranCfg.GNB.AMFN2IP,
+		ranCfg.GNB.RANN2IP,
+		ranCfg.GNB.AMFN2Port,
+		ranCfg.GNB.RANN2Port,
+	)
 
 	// Connect to AMF
 	log.Println("\n[Step 1] Connecting to AMF...")
@@ -88,8 +111,8 @@ func main() {
 
 	// Perform NG Setup
 	log.Println("\n[Step 2] Performing NG Setup...")
-	gnbName := fmt.Sprintf("NTN-SAT-%s", *satellite)
-	ngSetup := ngap.NewNGSetupHandler(ngapClient, []byte(gnbID), gnbName, gnbTAC)
+	gnbName := fmt.Sprintf("NTN-SAT-%s", satellite)
+	ngSetup := ngap.NewNGSetupHandler(ngapClient, gnbIDBytes, gnbName, int(gnbTAC))
 	if err := ngSetup.PerformNGSetup(); err != nil {
 		log.Fatalf("NG Setup failed: %v", err)
 	}
@@ -107,16 +130,22 @@ func main() {
 	// Perform PDU Session Establishment
 	log.Println("\n[Step 4] Performing PDU Session Establishment...")
 	pduHandler := ran.NewPDUSessionHandler(uectx, nasCodec, ngapClient)
-	snssai := &models.Snssai{Sst: 1, Sd: "010203"}
+
+	// Parse SNSSAI from config
+	sst, err := strconv.ParseInt(ueCfg.UE.PDUSession.SNSSAI.SST, 10, 32)
+	if err != nil {
+		log.Fatalf("Invalid SST in config: %v", err)
+	}
+	snssai := &models.Snssai{Sst: int32(sst), Sd: ueCfg.UE.PDUSession.SNSSAI.SD}
 
 	// Pass RAN N3 IP to PDU handler (RAN will receive GTP-U downlink at this address)
-	if err := pduHandler.EstablishPDUSessionForSeparateUE(1, "internet", snssai, ranN3IP); err != nil {
+	if err := pduHandler.EstablishPDUSessionForSeparateUE(1, ueCfg.UE.PDUSession.DNN, snssai, ranCfg.GNB.RANN3IP); err != nil {
 		log.Fatalf("PDU Session Establishment failed: %v\n", err)
 	}
 
-	log.Printf("✓ PDU Session established (ID: %d, DNN: %s)\n", 1, "internet")
+	log.Printf("✓ PDU Session established (ID: %d, DNN: %s)\n", 1, ueCfg.UE.PDUSession.DNN)
 	log.Printf("✓ UE IP Address: %s\n", uectx.UEIPAddress)
-	log.Printf("✓ RAN N3 IP (for GTP-U): %s:%d\n", ranN3IP, ranN3Port)
+	log.Printf("✓ RAN N3 IP (for GTP-U): %s:%d\n", ranCfg.GNB.RANN3IP, ranCfg.GNB.RANN3Port)
 	log.Printf("✓ UPF TEID: 0x%08x\n", uectx.UPFTEID)
 	log.Printf("✓ RAN TEID: 0x%08x\n", uectx.RANTEID)
 
@@ -126,11 +155,12 @@ func main() {
 
 	// Start RAN Data Plane Server (like free-ran-ue)
 	log.Println("\n[Step 5] Starting RAN Data Plane Server...")
+	upfN3Addr := fmt.Sprintf("%s:%d", ranCfg.GNB.UPFN3IP, ranCfg.GNB.UPFN3Port)
 	dataPlane, err := ranlink.NewRANDataPlane(
-		ranDataPlaneIP,
-		ranDataPlanePort,
-		ranN3IP,
-		ranN3Port,
+		ranCfg.GNB.RANDataPlaneIP,
+		ranCfg.GNB.RANDataPlanePort,
+		ranCfg.GNB.RANN3IP,
+		ranCfg.GNB.RANN3Port,
 		upfN3Addr,
 		uint32(uectx.RANTEID), // UL TEID (RAN->UPF)
 		uint32(uectx.UPFTEID), // DL TEID (UPF->RAN)
@@ -149,14 +179,14 @@ func main() {
 	// Get actual N3 port assigned by kernel
 	actualN3Port := dataPlane.GetN3Port()
 
-	log.Printf("✓ RAN Data Plane Server started on port %d\n", ranDataPlanePort)
-	log.Printf("✓ RAN N3 GTP-U endpoint: %s:%d\n", ranN3IP, actualN3Port)
+	log.Printf("✓ RAN Data Plane Server started on port %d\n", ranCfg.GNB.RANDataPlanePort)
+	log.Printf("✓ RAN N3 GTP-U endpoint: %s:%d\n", ranCfg.GNB.RANN3IP, actualN3Port)
 	log.Println("\nYou can now start the UE process with:")
 	log.Println("\nIn Terminal 2, first build:")
-	log.Println("  go build -o /tmp/ntn_ue cmd_ue.go")
+	log.Println("  go build -o /tmp/ntn_ue ./cmd/ue.go")
 	log.Println("\nThen run with sudo:")
 	log.Printf("  sudo /tmp/ntn_ue -ue-ip %s -ran-addr %s:%d -imsi %s\n",
-		uectx.UEIPAddress, ranDataPlaneIP, ranDataPlanePort, *imsi)
+		uectx.UEIPAddress, ranCfg.GNB.RANDataPlaneIP, ranCfg.GNB.RANDataPlanePort, imsiStr)
 
 	log.Println("\n📡 RAN is ACTIVE (Control + Data Plane) - Press Ctrl+C to stop")
 
