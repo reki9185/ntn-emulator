@@ -63,6 +63,15 @@ sudo ./setup.sh up
 2. Start free5GC
 
 ```bash
+# Replace amf with amf-ntn
+cd NFs
+git clone https://github.com/reki9185/amf.git
+git checkout ntn
+
+# Recompile free5GC
+cd .. && make amf
+
+# Run free5GC
 ./reload.sh enp0s3
 ./run.sh
 ```
