@@ -28,8 +28,6 @@ This repository implements:
 - Interfaces to free5GC (NGAP, GTP-U)
 - Dynamic link condition updates from ns-3
 
----
-
 ## Demo
 
 ### Build
@@ -91,7 +89,7 @@ sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
 
 ### Clean
 
-1. Shud down RAN and UE
+1. Shutdown RAN and UE
 
 2. Close free5GC
 ```bash
@@ -103,8 +101,6 @@ sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
 ```bash
 sudo ./setup down
 ```
-
----
 
 ## Repository Structure
 
@@ -151,8 +147,6 @@ ntn-emulator/
     └── rrc/               # NEW: Directory for RRC (not implemented)
 ```
 
----
-
 ## Interaction with Other Repositories
 
 ### 1️⃣ ns-3 Repository (External)
@@ -176,7 +170,6 @@ ntn-emulator continuously monitors this output and updates its internal link mod
 
 https://free5gc.org/guide/3-install-free5gc/
 
----
 
 ## Architecture Flow
 
@@ -209,7 +202,5 @@ https://free5gc.org/guide/3-install-free5gc/
        │                        │
        └────────Internet────────┘
 ```
-
----
 
 ## License
