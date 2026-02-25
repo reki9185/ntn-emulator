@@ -162,8 +162,8 @@ func main() {
 		ranCfg.GNB.RANN3IP,
 		ranCfg.GNB.RANN3Port,
 		upfN3Addr,
-		uint32(uectx.RANTEID), // UL TEID (RAN->UPF)
-		uint32(uectx.UPFTEID), // DL TEID (UPF->RAN)
+		uint32(uectx.UPFTEID), // UL TEID (RAN->UPF) - Use UPF-assigned TEID
+		uint32(uectx.RANTEID), // DL TEID (UPF->RAN) - Use RAN-assigned TEID
 		uectx.Supi,
 	)
 	if err != nil {

@@ -55,33 +55,53 @@ go run test_watcher.go
 
 ### Run
 
-1. Start free5GC
-
-2. Register UE in webconsole
-- Open http://localhost:5000
-- Add subscriber with IMSI: `208930000000001`
-
-3. Start ntn-emulator
+1. Setup namespace
 
 ```bash
 # Create namespace
-sudo ./setup.sh
-
-# Clear namespace
-sudo ./down.sh
-
-# Start ran
-sudo ip netns exec ns3 /tmp/ntn_ran
-
-# Start UE
-sudo /tmp/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
+sudo ./setup.sh up
 ```
 
-4. Test connectivity
+2. Start free5GC
 
 ```bash
-# In UE namespace
-sudo ping -I uetun0 8.8.8.8
+./reload.sh enp0s3
+./run.sh
+```
+
+3. Register UE in webconsole
+- Open http://localhost:5000
+- Add subscriber with IMSI: `208930000000001`
+
+4. Start ntn-emulator
+
+```bash
+# Start ran
+sudo ip netns exec ran_ns /tmp/ntn_ran -imsi imsi-208930000000001
+
+# Start UE in another terminal
+sudo ip netns exec ue_ns /tmp/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
+```
+
+5. Test connectivity
+
+```bash
+sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
+```
+
+### Clean
+
+1. Shud down RAN and UE
+
+2. Close free5GC
+```bash
+./force_kill.sh
+./force_kill.sh -db
+```
+
+3. Delete namespace
+```bash
+sudo ./setup down
 ```
 
 ---

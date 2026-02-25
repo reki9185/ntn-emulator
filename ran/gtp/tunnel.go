@@ -76,7 +76,7 @@ func NewGTPTunnel(localTEID, remoteTEID uint32, upfIP string, upfPort int, tunIf
 // NewGTPTunnelWithN3IP creates a new GTP-U tunnel with specific N3 IP binding
 // This is the free-ran-ue pattern: UE binds to a specific local IP for N3
 func NewGTPTunnelWithN3IP(localTEID, remoteTEID uint32, upfAddr string, n3IP string, tunIface *tun.TUNInterface) (*GTPTunnel, error) {
-	// Parse UPF address (e.g., "127.0.0.1:2152")
+	// Parse UPF address (e.g., "10.0.1.1:2152")
 	upfUDPAddr, err := net.ResolveUDPAddr("udp", upfAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve UPF address: %w", err)
@@ -258,6 +258,16 @@ func (g *GTPTunnel) handleDownlink() {
 
 			fmt.Printf("⬇️  Downlink: Extracted %d bytes IP packet from GTP-U\n", len(ipPacket))
 
+			srcIP := net.IP(ipPacket[12:16])
+			dstIP := net.IP(ipPacket[16:20])
+			protocol := ipPacket[9]
+
+			fmt.Printf("IP src=%s dst=%s protocol=%d\n",
+				srcIP.String(),
+				dstIP.String(),
+				protocol,
+			)
+
 			// Write IP packet to TUN interface
 			bytesWritten, err := g.tunIface.Write(ipPacket)
 			if err != nil {
@@ -322,12 +332,13 @@ func (g *GTPTunnel) decapsulateGTP(gtpPacket []byte) ([]byte, error) {
 
 	headerLen := 8
 	if hasExtension || hasSeqNum || hasNPDU {
-		headerLen = 12 // Extended header
-		if len(gtpPacket) < 12 {
-			return nil, fmt.Errorf("GTP packet too short for extended header: %d bytes", len(gtpPacket))
-		}
-		fmt.Printf("🔍 GTP-U header has extensions (Ext=%v, Seq=%v, NPDU=%v), header length: %d\n",
-			hasExtension, hasSeqNum, hasNPDU, headerLen)
+		// headerLen = 12 // Extended header
+		return nil, fmt.Errorf("GTP extension header not supported yet")
+		// if len(gtpPacket) < 12 {
+		// 	return nil, fmt.Errorf("GTP packet too short for extended header: %d bytes", len(gtpPacket))
+		// }
+		// fmt.Printf("🔍 GTP-U header has extensions (Ext=%v, Seq=%v, NPDU=%v), header length: %d\n",
+		// 	hasExtension, hasSeqNum, hasNPDU, headerLen)
 	}
 
 	// Extract TEID and verify it matches our local TEID

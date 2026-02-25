@@ -166,7 +166,7 @@ func (rdp *RANDataPlane) receiveFromUE() {
 			rdp.handleInitialPacket(ueAddr, data)
 		} else {
 			// Regular data packet - queue for GTP encapsulation
-			log.Printf("📥 RAN: Received %d bytes from UE %s\n", n, ueAddr.String())
+			// log.Printf("📥 RAN: Received %d bytes from UE %s\n", n, ueAddr.String())
 			rdp.uplinkChan <- data
 		}
 	}
@@ -218,7 +218,7 @@ func (rdp *RANDataPlane) receiveFromUPF() {
 		data := make([]byte, n)
 		copy(data, buffer[:n])
 
-		log.Printf("📥 RAN: Received %d bytes GTP-U from UPF\n", n)
+		// log.Printf("📥 RAN: Received %d bytes GTP-U from UPF\n", n)
 
 		// Queue for downlink forwarding
 		rdp.downlinkChan <- data
@@ -251,9 +251,10 @@ func (rdp *RANDataPlane) forwardUplinkToUPF() {
 				log.Printf("⚠️  RAN: Error sending to UPF: %v\n", err)
 				continue
 			}
+			_ = n // Suppress unused warning
 
-			log.Printf("📤 RAN: Sent %d bytes GTP-U to UPF (TEID: 0x%08x, payload: %d bytes)\n",
-				n, rdp.ulTEID, len(packet))
+			// log.Printf("📤 RAN: Sent %d bytes GTP-U to UPF (TEID: 0x%08x, payload: %d bytes)\n",
+			// 	n, rdp.ulTEID, len(packet))
 		}
 	}
 }
@@ -267,21 +268,97 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 		case <-rdp.ctx.Done():
 			return
 		case gtpPacket := <-rdp.downlinkChan:
-			// Parse GTP-U header
-			if len(gtpPacket) < 12 {
+			// Parse GTP-U header (minimum 8 bytes)
+			if len(gtpPacket) < 8 {
 				log.Printf("⚠️  RAN: GTP packet too short (%d bytes)\n", len(gtpPacket))
+				continue
+			}
+
+			// Check GTP version and flags
+			flags := gtpPacket[0]
+			version := (flags >> 5) & 0x07
+			hasExtension := (flags & 0x04) != 0
+			hasSeq := (flags & 0x02) != 0
+			hasNPDU := (flags & 0x01) != 0
+			msgType := gtpPacket[1]
+			_ = msgType // Suppress unused warning
+
+			// log.Printf("🔍 RAN Downlink: GTP version=%d, flags=0x%02x, msgType=0x%02x, E=%v, S=%v, PN=%v, len=%d\n",
+			// 	version, flags, msgType, hasExtension, hasSeq, hasNPDU, len(gtpPacket))
+
+			if version != 1 {
+				log.Printf("⚠️  RAN: Unsupported GTP version %d\n", version)
 				continue
 			}
 
 			// Extract TEID
 			teid := binary.BigEndian.Uint32(gtpPacket[4:8])
+			// log.Printf("🔍 RAN Downlink: TEID=0x%08x (expected 0x%08x)\n", teid, rdp.dlTEID)
+
 			if teid != rdp.dlTEID {
 				log.Printf("⚠️  RAN: Unexpected TEID 0x%08x (expected 0x%08x)\n", teid, rdp.dlTEID)
 				continue
 			}
 
-			// Extract payload (skip 12-byte header)
-			payload := gtpPacket[12:]
+			// Determine header length based on flags
+			headerLen := 8
+			if hasExtension || hasSeq || hasNPDU {
+				// When any of E/S/PN flags are set, bytes 8-11 are present
+				if len(gtpPacket) < 12 {
+					log.Printf("⚠️  RAN: GTP packet with E/S/PN flags but too short (%d bytes)\n", len(gtpPacket))
+					continue
+				}
+				headerLen = 12
+
+				// If E (Extension) flag is set, parse extension headers
+				if hasExtension {
+					// Byte 11 contains the Next Extension Header Type
+					nextExtType := gtpPacket[11]
+					offset := 12
+
+					// log.Printf("🔍 RAN Downlink: Extension headers present, first type=0x%02x\n", nextExtType)
+
+					// Parse extension headers until we find type 0x00 (no more extensions)
+					for nextExtType != 0x00 {
+						if offset >= len(gtpPacket) {
+							log.Printf("⚠️  RAN: Extension header parsing exceeded packet length\n")
+							break
+						}
+
+						// First byte of extension header is the length (in 4-byte units, excluding first 2 bytes)
+						extLen := int(gtpPacket[offset]) * 4
+						if extLen < 4 || offset+extLen > len(gtpPacket) {
+							log.Printf("⚠️  RAN: Invalid extension header length %d at offset %d\n", extLen, offset)
+							break
+						}
+
+						// Last byte of extension header is the next extension type
+						nextExtType = gtpPacket[offset+extLen-1]
+						// log.Printf("🔍 RAN Downlink: Extension header at offset %d, length=%d bytes, next type=0x%02x\n",
+						// 	offset, extLen, nextExtType)
+
+						offset += extLen
+						headerLen = offset
+					}
+
+					// log.Printf("🔍 RAN Downlink: Total header length with extensions: %d bytes\n", headerLen)
+				}
+			}
+
+			// log.Printf("🔍 RAN Downlink: Final payload offset=%d\n", headerLen)
+
+			// Extract payload (skip variable-length header)
+			payload := gtpPacket[headerLen:]
+
+			// Debug: Print first few bytes of payload (IP packet)
+			// if len(payload) >= 20 {
+			// 	ipVersion := (payload[0] >> 4) & 0x0F
+			// 	protocol := payload[9]
+			// 	srcIP := net.IP(payload[12:16])
+			// 	dstIP := net.IP(payload[16:20])
+			// 	log.Printf("🔍 RAN Downlink: IP v%d, proto=%d, src=%s, dst=%s, payload_len=%d\n",
+			// 		ipVersion, protocol, srcIP, dstIP, len(payload))
+			// }
 
 			// Get UE address
 			rdp.ueAddrLock.RLock()
@@ -299,8 +376,9 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 				log.Printf("⚠️  RAN: Error sending to UE: %v\n", err)
 				continue
 			}
+			_ = n // Suppress unused warning
 
-			log.Printf("📤 RAN: Sent %d bytes to UE %s\n", n, ueAddr.String())
+			// log.Printf("📤 RAN: Sent %d bytes to UE %s\n", n, ueAddr.String())
 		}
 	}
 }

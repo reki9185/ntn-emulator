@@ -60,7 +60,8 @@ func NewUEDataPlane(ranAddr string, imsi string, tunIface *tun.TUNInterface) (*U
 // Start starts the UE data plane
 func (udp *UEDataPlane) Start() error {
 	// Connect to RAN data plane server
-	localAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+	// Use 0.0.0.0 to bind to any interface (allows connection across namespaces)
+	localAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
 	if err != nil {
 		return fmt.Errorf("failed to resolve local address: %w", err)
 	}
@@ -129,7 +130,7 @@ func (udp *UEDataPlane) readFromTun() {
 		data := make([]byte, n)
 		copy(data, buffer[:n])
 
-		log.Printf("📥 UE: Read %d bytes from TUN\n", n)
+		// log.Printf("📥 UE: Read %d bytes from TUN\n", n)
 
 		// Queue for RAN transmission
 		udp.fromTunChan <- data
@@ -161,7 +162,7 @@ func (udp *UEDataPlane) readFromRan() {
 		data := make([]byte, n)
 		copy(data, buffer[:n])
 
-		log.Printf("📥 UE: Received %d bytes from RAN\n", n)
+		// log.Printf("📥 UE: Received %d bytes from RAN\n", n)
 
 		// Queue for TUN write
 		udp.fromRanChan <- data
@@ -183,8 +184,9 @@ func (udp *UEDataPlane) forwardToRan() {
 				log.Printf("⚠️  UE: Error sending to RAN: %v\n", err)
 				continue
 			}
+			_ = n // Suppress unused warning
 
-			log.Printf("📤 UE: Sent %d bytes to RAN\n", n)
+			// log.Printf("📤 UE: Sent %d bytes to RAN\n", n)
 		}
 	}
 }
@@ -204,8 +206,9 @@ func (udp *UEDataPlane) forwardToTun() {
 				log.Printf("⚠️  UE: Error writing to TUN: %v\n", err)
 				continue
 			}
+			_ = n // Suppress unused warning
 
-			log.Printf("📤 UE: Wrote %d bytes to TUN\n", n)
+			// log.Printf("📤 UE: Wrote %d bytes to TUN\n", n)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/free5gc/aper"
 	"github.com/free5gc/ngap"
+	"github.com/free5gc/ngap/ngapConvert"
 	"github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/sctp"
 
@@ -483,12 +484,8 @@ func buildPDUSessionResourceSetupResponseTransfer(gnbTEID uint32, gnbIP string) 
 	transfer.DLQosFlowPerTNLInformation.UPTransportLayerInformation.Present = ngapType.UPTransportLayerInformationPresentGTPTunnel
 	transfer.DLQosFlowPerTNLInformation.UPTransportLayerInformation.GTPTunnel = new(ngapType.GTPTunnel)
 
-	// Set gNB IP address
-	ipBytes := net.ParseIP(gnbIP).To4()
-	transfer.DLQosFlowPerTNLInformation.UPTransportLayerInformation.GTPTunnel.TransportLayerAddress.Value = aper.BitString{
-		Bytes:     ipBytes,
-		BitLength: 32,
-	}
+	// Set gNB IP address using ngapConvert (like free-ran-ue)
+	transfer.DLQosFlowPerTNLInformation.UPTransportLayerInformation.GTPTunnel.TransportLayerAddress = ngapConvert.IPAddressToNgap(gnbIP, "")
 
 	// Set gNB TEID
 	teidBytes := make([]byte, 4)
