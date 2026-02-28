@@ -1,4 +1,5 @@
 ue:
+  ueIp: "10.60.0.1"        # UE IP address for data plane communication
   ranDataPlaneIp: "10.0.2.1" # RAN Data Plane IP open for UE connection
   ranDataPlanePort: 31414 # RAN Data Plane port open for UE connection
 
