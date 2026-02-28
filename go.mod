@@ -29,6 +29,7 @@ require (
 	github.com/free5gc/openapi v1.2.3
 	github.com/free5gc/sctp v1.1.1
 	github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8
+	gopkg.in/yaml.v2 v2.4.0
 	test v0.0.0
 )
 
@@ -72,7 +73,7 @@ require (
 	github.com/free5gc/tlv v1.1.0 // indirect
 	github.com/free5gc/udm v0.0.0 // indirect
 	github.com/free5gc/udr v0.0.0 // indirect
-	github.com/free5gc/util v1.3.2-0.20260107090449-c09baaf75b11 // indirect
+	github.com/free5gc/util v1.3.2-0.20260204030658-79d56f347175 // indirect
 	github.com/free5gc/webconsole v0.0.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/cors v1.6.0 // indirect
@@ -161,6 +162,5 @@ require (
 	google.golang.org/grpc v1.65.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
