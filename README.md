@@ -70,17 +70,52 @@ git checkout ntn
 
 # Recompile free5GC
 cd .. && make amf
+```
 
+```bash
 # Run free5GC
 ./reload.sh enp0s3
 ./run.sh
 ```
 
-3. Register UE in webconsole
+3. Modify NF configuration:
+
+    - ~/free5gc/config/amfcfg.yaml
+
+        Replace `ngapIpList` IP from `127.0.0.18` to `10.0.1.1`:
+
+        ```yaml
+        ngapIpList:
+          - 10.0.1.1
+        ```
+
+    - ~/free5gc/config/smfcfg.yaml
+
+        Replace N3 interface's endpoints IP from `127.0.0.8` to your `10.0.1.1`:
+
+        ```yaml
+        interfaces:
+          - interfaceType: N3
+            endpoints:
+              - 10.0.1.1
+        ```
+
+    - ~/free5gc/config/upfcfg.yaml
+
+        Replace N6 interface address IP from `127.0.0.8` to `10.0.1.1`:
+
+        ```yaml
+        gtpu:
+          forwarder: gtp5g
+          iifList:
+            - addr: 10.0.1.1
+        ```
+
+4. Register UE in webconsole
 - Open http://localhost:5000
 - Add subscriber with IMSI: `208930000000001`
 
-4. Start ntn-emulator
+5. Start ntn-emulator
 
 ```bash
 # Start ran
@@ -90,7 +125,7 @@ sudo ip netns exec ran_ns /tmp/ntn_ran -imsi imsi-208930000000001
 sudo ip netns exec ue_ns /tmp/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
 ```
 
-5. Test connectivity
+6. Test connectivity
 
 ```bash
 sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
