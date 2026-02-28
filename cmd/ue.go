@@ -42,11 +42,13 @@ func main() {
 
 	// Validate UE IP (must be provided)
 	if *ueIP == "" {
-		log.Println("Usage:")
-		log.Println("  1. Build: go build -o /tmp/ntn_ue ./cmd/ue.go")
-		log.Println("  2. Run: sudo /tmp/ntn_ue -ue-ip <UE_IP> [-config configs/ue.yaml]")
-		log.Fatal("Missing required parameter: -ue-ip")
-	}
+        *ueIP = ueCfg.UE.UEIP
+        
+        // Exit if UE IP is null after checking config
+        if *ueIP == "" {
+            log.Fatal("Missing UE IP: please provide via -ue-ip flag or ueIp in config")
+        }
+    }
 
 	log.Println("========================================")
 	log.Println("NTN UE Data Plane Process")

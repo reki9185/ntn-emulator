@@ -50,7 +50,7 @@ func main() {
 	}
 
 	// Use satellite from config if not overridden
-	satellite := ranCfg.GNB.Satellite
+	satellite := ranCfg.GNB.GNBName
 
 	log.Println("========================================")
 	log.Println("NTN RAN Control Plane Process")
