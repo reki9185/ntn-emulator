@@ -120,9 +120,14 @@ cd .. && make amf
 ```bash
 # Start ran
 sudo ip netns exec ran_ns /tmp/ntn_ran -imsi imsi-208930000000001
+# Or you can execute with reading configs/ran.yaml
+sudo ip netns exec ran_ns /tmp/ntn_ran
 
 # Start UE in another terminal
 sudo ip netns exec ue_ns /tmp/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
+# Or you can execute with reading configs/ue.yaml
+sudo ip netns exec ue_ns /tmp/ntn_ue
+
 ```
 
 6. Test connectivity
