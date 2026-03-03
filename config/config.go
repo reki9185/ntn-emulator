@@ -47,10 +47,16 @@ type RANConfig struct {
 // UEConfig represents the UE configuration from ue.yaml
 type UEConfig struct {
 	UE struct {
-		UEIP             string `yaml:"ueIp"`
-		RANDataPlaneIP   string `yaml:"ranDataPlaneIp"`
-		RANDataPlanePort int    `yaml:"ranDataPlanePort"`
-		PLMNID           struct {
+		UEIP                string `yaml:"ueIp"`
+		AMFN2IP             string `yaml:"amfN2Ip"`
+		AMFN2Port           int    `yaml:"amfN2Port"`
+		UEN2IP              string `yaml:"ueN2Ip"`
+		UEN2Port            int    `yaml:"ueN2Port"`
+		RANControlPlaneIP   string `yaml:"ranControlPlaneIp"`
+		RANControlPlanePort int    `yaml:"ranControlPlanePort"`
+		RANDataPlaneIP      string `yaml:"ranDataPlaneIp"`
+		RANDataPlanePort    int    `yaml:"ranDataPlanePort"`
+		PLMNID              struct {
 			MCC string `yaml:"mcc"`
 			MNC string `yaml:"mnc"`
 		} `yaml:"plmnId"`

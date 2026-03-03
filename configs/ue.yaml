@@ -1,5 +1,11 @@
 ue:
   ueIp: "10.60.0.1"        # UE IP address for data plane communication
+  amfN2Ip: "10.0.1.1"      # AMF N2 IP for NGAP connection
+  amfN2Port: 38412         # AMF N2 SCTP port
+  ueN2Ip: "10.0.2.2"       # UE N2 IP for NGAP (UE's namespace IP)
+  ueN2Port: 38414          # UE N2 SCTP port
+  ranControlPlaneIp: "10.0.2.1" # RAN Control Plane IP for UE connection
+  ranControlPlanePort: 31413 # RAN Control Plane port for UE connection
   ranDataPlaneIp: "10.0.2.1" # RAN Data Plane IP open for UE connection
   ranDataPlanePort: 31414 # RAN Data Plane port open for UE connection
 

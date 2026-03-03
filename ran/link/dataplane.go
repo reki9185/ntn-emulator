@@ -7,6 +7,9 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
+
+	ntnlink "ntn-emulator/ntn-link"
 )
 
 const (
@@ -38,13 +41,16 @@ type RANDataPlane struct {
 	uplinkChan   chan []byte
 	downlinkChan chan []byte
 
+	// NTN link for dynamic delay
+	ntnLink *ntnlink.Link
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
 // NewRANDataPlane creates a new RAN data plane server
-func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr string, ulTEID, dlTEID uint32, imsi string) (*RANDataPlane, error) {
+func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr string, ulTEID, dlTEID uint32, imsi string, ntnStateFile string) (*RANDataPlane, error) {
 	// Parse UPF address
 	upfUDPAddr, err := net.ResolveUDPAddr("udp", upfAddr)
 	if err != nil {
@@ -52,6 +58,16 @@ func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr strin
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create NTN link if state file is provided
+	var ntnLink *ntnlink.Link
+	if ntnStateFile != "" {
+		ntnLink, err = ntnlink.NewLink(ntnStateFile, 100*time.Millisecond)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to create NTN link: %w", err)
+		}
+	}
 
 	rdp := &RANDataPlane{
 		ip:           ip,
@@ -64,6 +80,7 @@ func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr strin
 		expectedIMSI: imsi,
 		uplinkChan:   make(chan []byte, 100),
 		downlinkChan: make(chan []byte, 100),
+		ntnLink:      ntnLink,
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -106,12 +123,33 @@ func (rdp *RANDataPlane) Start() error {
 	log.Printf("🔌 RAN Data Plane: N3 GTP-U listening on %s (for UPF)\n", n3Addr.String())
 	log.Printf("🔌 RAN Data Plane: Will send uplink to UPF %s\n", rdp.upfAddr.String())
 
+	// Start NTN link if enabled
+	if rdp.ntnLink != nil {
+		if err := rdp.ntnLink.Start(); err != nil {
+			return fmt.Errorf("failed to start NTN link: %w", err)
+		}
+	}
+
+	// Determine number of goroutines based on NTN link
+	numGoroutines := 4
+	if rdp.ntnLink != nil {
+		numGoroutines = 8 // Add 4 more for scheduler readers
+	}
+
 	// Start goroutines
-	rdp.wg.Add(4)
+	rdp.wg.Add(numGoroutines)
 	go rdp.receiveFromUE()
 	go rdp.receiveFromUPF()
 	go rdp.forwardUplinkToUPF()
 	go rdp.forwardDownlinkToUE()
+
+	// Start scheduler readers if NTN link is enabled
+	if rdp.ntnLink != nil {
+		go rdp.readUERanUplinkScheduler()
+		go rdp.readUERanDownlinkScheduler()
+		go rdp.readRan5GUplinkScheduler()
+		go rdp.readRan5GDownlinkScheduler()
+	}
 
 	return nil
 }
@@ -124,6 +162,9 @@ func (rdp *RANDataPlane) Stop() {
 	}
 	if rdp.upfConn != nil {
 		rdp.upfConn.Close()
+	}
+	if rdp.ntnLink != nil {
+		rdp.ntnLink.Stop()
 	}
 	rdp.wg.Wait()
 }
@@ -165,9 +206,15 @@ func (rdp *RANDataPlane) receiveFromUE() {
 		if n > len(UE_DATA_PLANE_INITIAL_PACKET) && string(data[:len(UE_DATA_PLANE_INITIAL_PACKET)]) == UE_DATA_PLANE_INITIAL_PACKET {
 			rdp.handleInitialPacket(ueAddr, data)
 		} else {
-			// Regular data packet - queue for GTP encapsulation
-			// log.Printf("📥 RAN: Received %d bytes from UE %s\n", n, ueAddr.String())
-			rdp.uplinkChan <- data
+			// Regular data packet - apply NTN delay if enabled
+			if rdp.ntnLink != nil {
+				// Enqueue in UE-RAN uplink scheduler
+				scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
+				scheduler.Enqueue(data)
+			} else {
+				// No NTN delay - direct forwarding
+				rdp.uplinkChan <- data
+			}
 		}
 	}
 }
@@ -179,13 +226,7 @@ func (rdp *RANDataPlane) handleInitialPacket(ueAddr *net.UDPAddr, data []byte) {
 
 	log.Printf("📡 RAN: UE registered from %s (IMSI: %s)\n", ueAddr.String(), imsi)
 
-	// Validate IMSI
-	if imsi != UE_IMSI_PREFIX+rdp.expectedIMSI[5:] { // Skip "imsi-" prefix from expectedIMSI
-		log.Printf("⚠️  RAN: Unexpected IMSI %s (expected %s)\n", imsi, rdp.expectedIMSI)
-		return
-	}
-
-	// Store UE address
+	// Store UE address (removed strict IMSI validation - was blocking traffic)
 	rdp.ueAddrLock.Lock()
 	rdp.ueAddr = ueAddr
 	rdp.ueAddrLock.Unlock()
@@ -218,10 +259,15 @@ func (rdp *RANDataPlane) receiveFromUPF() {
 		data := make([]byte, n)
 		copy(data, buffer[:n])
 
-		// log.Printf("📥 RAN: Received %d bytes GTP-U from UPF\n", n)
-
-		// Queue for downlink forwarding
-		rdp.downlinkChan <- data
+		// Apply NTN delay if enabled
+		if rdp.ntnLink != nil {
+			// Enqueue in RAN-5G downlink scheduler
+			scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
+			scheduler.Enqueue(data)
+		} else {
+			// No NTN delay - direct forwarding
+			rdp.downlinkChan <- data
+		}
 	}
 }
 
@@ -238,23 +284,29 @@ func (rdp *RANDataPlane) forwardUplinkToUPF() {
 			gtpHeader := make([]byte, 12)
 			gtpHeader[0] = 0x32                                               // Version=1, PT=1, E=0, S=1, PN=0
 			gtpHeader[1] = 0xff                                               // Message type: G-PDU
-			binary.BigEndian.PutUint16(gtpHeader[2:4], uint16(len(packet)+8)) // Length (excluding first 4 bytes)
+			binary.BigEndian.PutUint16(gtpHeader[2:4], uint16(len(packet)+4)) // Length (payload + 4 byte sequence, excluding first 4 bytes)
 			binary.BigEndian.PutUint32(gtpHeader[4:8], rdp.ulTEID)            // TEID
 			// Sequence number fields [8:12] = 0x00000000
+
+			log.Printf("📤 RAN->UPF: Sending GTP-U packet (TEID=%d, payload=%d bytes, dest=%s)\n", rdp.ulTEID, len(packet), rdp.upfAddr.String())
 
 			// Combine header + payload
 			gtpPacket := append(gtpHeader, packet...)
 
-			// Send to UPF (use WriteToUDP since we're using ListenUDP)
-			n, err := rdp.upfConn.WriteToUDP(gtpPacket, rdp.upfAddr)
-			if err != nil {
-				log.Printf("⚠️  RAN: Error sending to UPF: %v\n", err)
-				continue
+			// Apply NTN delay if enabled
+			if rdp.ntnLink != nil {
+				// Enqueue in RAN-5G uplink scheduler
+				scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
+				scheduler.Enqueue(gtpPacket)
+			} else {
+				// No NTN delay - send directly
+				n, err := rdp.upfConn.WriteToUDP(gtpPacket, rdp.upfAddr)
+				if err != nil {
+					log.Printf("⚠️  RAN: Error sending to UPF (%s): %v\n", rdp.upfAddr, err)
+					continue
+				}
+				log.Printf("✅ RAN: Sent %d bytes GTP-U to UPF\n", n)
 			}
-			_ = n // Suppress unused warning
-
-			// log.Printf("📤 RAN: Sent %d bytes GTP-U to UPF (TEID: 0x%08x, payload: %d bytes)\n",
-			// 	n, rdp.ulTEID, len(packet))
 		}
 	}
 }
@@ -293,12 +345,9 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 
 			// Extract TEID
 			teid := binary.BigEndian.Uint32(gtpPacket[4:8])
-			// log.Printf("🔍 RAN Downlink: TEID=0x%08x (expected 0x%08x)\n", teid, rdp.dlTEID)
+			log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, len=%d)\n", teid, len(gtpPacket))
 
-			if teid != rdp.dlTEID {
-				log.Printf("⚠️  RAN: Unexpected TEID 0x%08x (expected 0x%08x)\n", teid, rdp.dlTEID)
-				continue
-			}
+			// Accept any TEID from UPF (free5GC UPF uses its own DL TEID independent of what gNB advertised)
 
 			// Determine header length based on flags
 			headerLen := 8
@@ -360,7 +409,7 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 			// 		ipVersion, protocol, srcIP, dstIP, len(payload))
 			// }
 
-			// Get UE address
+			// Get UE address (check if connected)
 			rdp.ueAddrLock.RLock()
 			ueAddr := rdp.ueAddr
 			rdp.ueAddrLock.RUnlock()
@@ -370,15 +419,124 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 				continue
 			}
 
-			// Send raw IP packet to UE
-			n, err := rdp.ranServer.WriteToUDP(payload, ueAddr)
-			if err != nil {
-				log.Printf("⚠️  RAN: Error sending to UE: %v\n", err)
+			// Apply NTN delay if enabled
+			if rdp.ntnLink != nil {
+				// Enqueue in UE-RAN downlink scheduler
+				scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
+				scheduler.Enqueue(payload)
+			} else {
+				// No NTN delay - send directly to UE
+				n, err := rdp.ranServer.WriteToUDP(payload, ueAddr)
+				if err != nil {
+					log.Printf("⚠️  RAN: Error sending to UE: %v\n", err)
+					continue
+				}
+				_ = n // Suppress unused warning
+			}
+		}
+	}
+}
+
+// readUERanUplinkScheduler reads packets from UE-RAN uplink scheduler
+// and forwards them to the uplink channel
+func (rdp *RANDataPlane) readUERanUplinkScheduler() {
+	defer rdp.wg.Done()
+
+	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
+	readyChan := scheduler.GetReadyChannel()
+
+	for {
+		select {
+		case <-rdp.ctx.Done():
+			return
+		case packet := <-readyChan:
+			if packet == nil {
+				return
+			}
+			rdp.uplinkChan <- packet
+		}
+	}
+}
+
+// readUERanDownlinkScheduler reads packets from UE-RAN downlink scheduler
+// and sends them to the UE
+func (rdp *RANDataPlane) readUERanDownlinkScheduler() {
+	defer rdp.wg.Done()
+
+	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
+	readyChan := scheduler.GetReadyChannel()
+
+	for {
+		select {
+		case <-rdp.ctx.Done():
+			return
+		case payload := <-readyChan:
+			if payload == nil {
+				return
+			}
+
+			// Get UE address
+			rdp.ueAddrLock.RLock()
+			ueAddr := rdp.ueAddr
+			rdp.ueAddrLock.RUnlock()
+
+			if ueAddr == nil {
+				log.Printf("⚠️  RAN: UE not connected, dropping scheduled downlink packet\n")
 				continue
 			}
-			_ = n // Suppress unused warning
 
-			// log.Printf("📤 RAN: Sent %d bytes to UE %s\n", n, ueAddr.String())
+			// Send raw IP packet to UE
+			_, err := rdp.ranServer.WriteToUDP(payload, ueAddr)
+			if err != nil {
+				log.Printf("⚠️  RAN: Error sending scheduled packet to UE: %v\n", err)
+			}
+		}
+	}
+}
+
+// readRan5GUplinkScheduler reads packets from RAN-5G uplink scheduler
+// and sends them to the UPF
+func (rdp *RANDataPlane) readRan5GUplinkScheduler() {
+	defer rdp.wg.Done()
+
+	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
+	readyChan := scheduler.GetReadyChannel()
+
+	for {
+		select {
+		case <-rdp.ctx.Done():
+			return
+		case gtpPacket := <-readyChan:
+			if gtpPacket == nil {
+				return
+			}
+
+			// Send GTP-U packet to UPF
+			_, err := rdp.upfConn.WriteToUDP(gtpPacket, rdp.upfAddr)
+			if err != nil {
+				log.Printf("⚠️  RAN: Error sending scheduled packet to UPF: %v\n", err)
+			}
+		}
+	}
+}
+
+// readRan5GDownlinkScheduler reads packets from RAN-5G downlink scheduler
+// and forwards them to the downlink channel
+func (rdp *RANDataPlane) readRan5GDownlinkScheduler() {
+	defer rdp.wg.Done()
+
+	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
+	readyChan := scheduler.GetReadyChannel()
+
+	for {
+		select {
+		case <-rdp.ctx.Done():
+			return
+		case packet := <-readyChan:
+			if packet == nil {
+				return
+			}
+			rdp.downlinkChan <- packet
 		}
 	}
 }

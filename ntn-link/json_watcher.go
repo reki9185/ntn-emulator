@@ -11,9 +11,10 @@ import (
 
 // NTNState represents the runtime NTN link state from ns-3
 type NTNState struct {
-	Timestamp float64 `json:"timestamp"`
-	Satellite string  `json:"satellite"`
-	Delay     float64 `json:"delay_ms"`
+	Timestamp  float64 `json:"timestamp"`
+	Satellite  string  `json:"satellite"`
+	DelayUERan float64 `json:"delay_ue_ran"` // UE to RAN delay in ms
+	DelayRan5G float64 `json:"delay_ran_5g"` // RAN to 5GC delay in ms
 }
 
 // StateUpdateCallback is called when NTN state changes
@@ -86,8 +87,8 @@ func (w *JSONWatcher) Start() error {
 		w.stateMutex.Lock()
 		w.currentState = initialState
 		w.stateMutex.Unlock()
-		log.Printf("Initial NTN state: Satellite=%s, Delay=%.1fms, Timestamp=%.1fs",
-			initialState.Satellite, initialState.Delay, initialState.Timestamp)
+		log.Printf("Initial NTN state: Satellite=%s, UE-RAN=%.1fms, RAN-5G=%.1fms, Timestamp=%.1fs",
+			initialState.Satellite, initialState.DelayUERan, initialState.DelayRan5G, initialState.Timestamp)
 	}
 
 	// Start monitoring goroutine
@@ -169,8 +170,12 @@ func (w *JSONWatcher) hasStateChanged(old, new *NTNState) bool {
 		return true
 	}
 
-	// Check for significant delay change (>1ms difference)
-	if absFloat(old.Delay-new.Delay) > 1.0 {
+	// Check for significant delay change (>0.5ms difference)
+	if absFloat(old.DelayUERan-new.DelayUERan) > 0.5 {
+		return true
+	}
+
+	if absFloat(old.DelayRan5G-new.DelayRan5G) > 0.5 {
 		return true
 	}
 
@@ -186,14 +191,14 @@ func (w *JSONWatcher) hasStateChanged(old, new *NTNState) bool {
 func (w *JSONWatcher) notifyStateChange(old, new *NTNState) {
 	// Log the change
 	if old == nil {
-		log.Printf("NTN state initialized: Satellite=%s, Delay=%.1fms",
-			new.Satellite, new.Delay)
+		log.Printf("NTN state initialized: Satellite=%s, DelayUE-RAN=%.1fms, DelayRAN-5G=%.1fms",
+			new.Satellite, new.DelayUERan, new.DelayRan5G)
 	} else if old.Satellite != new.Satellite {
-		log.Printf("Satellite handover: %s -> %s (Delay: %.1fms -> %.1fms)",
-			old.Satellite, new.Satellite, old.Delay, new.Delay)
+		log.Printf("Satellite handover: %s -> %s (UE-RAN: %.1fms->%.1fms, RAN-5G: %.1fms->%.1fms)",
+			old.Satellite, new.Satellite, old.DelayUERan, new.DelayUERan, old.DelayRan5G, new.DelayRan5G)
 	} else {
-		log.Printf("Link state update: Delay %.1fms -> %.1fms (Satellite: %s)",
-			old.Delay, new.Delay, new.Satellite)
+		log.Printf("Link state update: UE-RAN %.1fms->%.1fms, RAN-5G %.1fms->%.1fms (Satellite: %s)",
+			old.DelayUERan, new.DelayUERan, old.DelayRan5G, new.DelayRan5G, new.Satellite)
 	}
 
 	// Invoke callbacks

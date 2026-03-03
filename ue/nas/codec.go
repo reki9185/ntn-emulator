@@ -53,6 +53,16 @@ func (nc *NASCodec) Encode(nasMessage *nas.Message, securityHeaderType uint8,
 	return test.EncodeNasPduWithSecurity(nc.ue.RanUeContext, payload, securityHeaderType, true, newSecurityContext)
 }
 
+// EncodeBytes encodes already-encoded NAS message bytes with security
+func (nc *NASCodec) EncodeBytes(payload []byte, securityHeaderType uint8,
+	securityContextAvailable, newSecurityContext bool) ([]byte, error) {
+	if !securityContextAvailable {
+		return payload, nil
+	}
+
+	return test.EncodeNasPduWithSecurity(nc.ue.RanUeContext, payload, securityHeaderType, true, newSecurityContext)
+}
+
 // BuildMobileIdentity5GS builds Mobile Identity 5GS from SUPI
 func BuildMobileIdentity5GS(supi string) nasType.MobileIdentity5GS {
 	// util.SupiToBytes expects pure digits without "imsi-" prefix

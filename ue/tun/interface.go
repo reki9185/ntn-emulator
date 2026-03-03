@@ -16,6 +16,9 @@ type TUNInterface struct {
 
 // NewTUNInterface creates and configures a new TUN interface
 func NewTUNInterface(name string, ip string) (*TUNInterface, error) {
+	// Delete existing interface if it exists (from previous run)
+	exec.Command("ip", "link", "delete", name).Run() // Ignore error if doesn't exist
+
 	tunCfg := water.Config{
 		DeviceType: water.TUN,
 	}
@@ -87,4 +90,20 @@ func (t *TUNInterface) GetName() string {
 // GetIP returns the configured IP address
 func (t *TUNInterface) GetIP() string {
 	return t.ip
+}
+
+// UpdateIP updates the TUN interface IP address
+func (t *TUNInterface) UpdateIP(newIP string) error {
+	// Remove old IP if exists
+	if t.ip != "" {
+		exec.Command("ip", "addr", "del", fmt.Sprintf("%s/32", t.ip), "dev", t.name).Run()
+	}
+
+	// Add new IP
+	if err := exec.Command("ip", "addr", "add", fmt.Sprintf("%s/32", newIP), "dev", t.name).Run(); err != nil {
+		return fmt.Errorf("failed to add new IP %s: %w", newIP, err)
+	}
+
+	t.ip = newIP
+	return nil
 }

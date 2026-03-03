@@ -164,6 +164,7 @@ ntn-emulator/
 │   ├── ran.yaml
 │   └── ntn-link.yaml
 │
+│
 ├── ntn-link/              # NTN link emulation
 │   ├── json_watcher.go    # NEW: ns-3 state monitor
 │   ├── link.go            # NEW: Link abstraction
@@ -188,7 +189,8 @@ ntn-emulator/
     ├── context.go         # UE context (was: ue_context.go)
     ├── nas/
     │   ├── codec.go       # NAS codec (was: nas_codec.go)
-    │   └── registration.go # Registration (was: registration.go)
+    │   ├── registration.go # Registration (was: registration.go)
+    │   └── deregistration.go # NEW: Deregistration procedure
     ├── tun/
     │   └── interface.go   # TUN interface (was: tun.go)
     ├── link/

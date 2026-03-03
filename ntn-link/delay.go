@@ -47,19 +47,3 @@ func (d *DynamicDelay) GetDelay() time.Duration {
 	jitterOffset := time.Duration(d.rng.Int63n(int64(d.jitter)*2) - int64(d.jitter))
 	return d.baseDelay + jitterOffset
 }
-
-// NTNDelay implements NTN-specific delay model
-// Updated dynamically from ns-3 via JSONWatcher
-type NTNDelay struct {
-	link *Link
-}
-
-// NewNTNDelay creates an NTN delay model
-func NewNTNDelay(link *Link) *NTNDelay {
-	return &NTNDelay{link: link}
-}
-
-// GetDelay returns the current NTN delay
-func (d *NTNDelay) GetDelay() time.Duration {
-	return d.link.GetDelay()
-}

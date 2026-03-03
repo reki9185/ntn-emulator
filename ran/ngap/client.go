@@ -89,11 +89,11 @@ func (c *NGAPClient) GetConnection() *sctp.SCTPConn {
 }
 
 // SendInitialUEMessage sends Initial UE Message (for first Registration Request)
-func (c *NGAPClient) SendInitialUEMessage(ranUeNgapID int64, nasPdu []byte) error {
-	// Build NGAP Initial UE Message using test package
-	pdu := ngapTestpacket.BuildInitialUEMessage(ranUeNgapID, nasPdu, "")
+func (c *NGAPClient) SendInitialUEMessage(ranUeNgapID int64, nasPdu []byte, plmnID ngapType.PLMNIdentity, tai ngapType.TAI) error {
+	// Build NGAP Initial UE Message with correct RRC Establishment Cause for MO-signalling
+	pdu := buildInitialUEMessageForRegistration(ranUeNgapID, nasPdu, plmnID, tai)
 
-	// Encode NGAP PDU
+	//Encode NGAP PDU
 	ngapMsg, err := ngap.Encoder(pdu)
 	if err != nil {
 		return fmt.Errorf("failed to encode Initial UE Message: %w", err)
@@ -137,17 +137,26 @@ func (c *NGAPClient) SendInitialContextSetupResponse(amfUeNgapID, ranUeNgapID in
 // ReceiveNASPDU receives and decodes NGAP message, extracts NAS PDU
 // Returns NAS PDU bytes and any AMF/RAN UE NGAP IDs if present
 func (c *NGAPClient) ReceiveNASPDU() (nasPdu []byte, amfUeNgapID *int64, ranUeNgapID *int64, err error) {
+	nasPdu, amfID, ranID, _, err := c.ReceiveNASPDUWithType()
+	return nasPdu, amfID, ranID, err
+}
+
+// ReceiveNASPDUWithType receives NAS PDU and returns the NGAP message type
+// Returns: nasPdu, amfUeNgapID, ranUeNgapID, isInitialContextSetup, error
+// isInitialContextSetup = true means this is Registration Accept in Initial Context Setup Request
+// isInitialContextSetup = false means this is intermediate message in Downlink NAS Transport
+func (c *NGAPClient) ReceiveNASPDUWithType() (nasPdu []byte, amfUeNgapID *int64, ranUeNgapID *int64, isInitialContextSetup bool, err error) {
 	// Receive NGAP message
 	recvBuf := make([]byte, 65535)
 	n, err := c.Receive(recvBuf)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to receive NGAP message: %w", err)
+		return nil, nil, nil, false, fmt.Errorf("failed to receive NGAP message: %w", err)
 	}
 
 	// Decode NGAP PDU
 	pdu, err := ngap.Decoder(recvBuf[:n])
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to decode NGAP PDU: %w", err)
+		return nil, nil, nil, false, fmt.Errorf("failed to decode NGAP PDU: %w", err)
 	}
 
 	// Extract NAS PDU from Downlink NAS Transport or Initial Context Setup Request
@@ -156,7 +165,7 @@ func (c *NGAPClient) ReceiveNASPDU() (nasPdu []byte, amfUeNgapID *int64, ranUeNg
 		if pdu.InitiatingMessage.Value.Present == ngapType.InitiatingMessagePresentDownlinkNASTransport {
 			downlinkNAS := pdu.InitiatingMessage.Value.DownlinkNASTransport
 			if downlinkNAS == nil {
-				return nil, nil, nil, fmt.Errorf("downlink NAS transport is nil")
+				return nil, nil, nil, false, fmt.Errorf("downlink NAS transport is nil")
 			}
 
 			// Extract IEs
@@ -180,17 +189,17 @@ func (c *NGAPClient) ReceiveNASPDU() (nasPdu []byte, amfUeNgapID *int64, ranUeNg
 			}
 
 			if nasPdu == nil {
-				return nil, nil, nil, fmt.Errorf("NAS PDU not found in Downlink NAS Transport")
+				return nil, nil, nil, false, fmt.Errorf("NAS PDU not found in Downlink NAS Transport")
 			}
 
-			return nasPdu, amfUeNgapID, ranUeNgapID, nil
+			return nasPdu, amfUeNgapID, ranUeNgapID, false, nil
 		}
 
 		// Check for Initial Context Setup Request
 		if pdu.InitiatingMessage.Value.Present == ngapType.InitiatingMessagePresentInitialContextSetupRequest {
 			initialContextSetup := pdu.InitiatingMessage.Value.InitialContextSetupRequest
 			if initialContextSetup == nil {
-				return nil, nil, nil, fmt.Errorf("initial context setup request is nil")
+				return nil, nil, nil, false, fmt.Errorf("initial context setup request is nil")
 			}
 
 			// Extract IEs
@@ -214,18 +223,18 @@ func (c *NGAPClient) ReceiveNASPDU() (nasPdu []byte, amfUeNgapID *int64, ranUeNg
 			}
 
 			if nasPdu == nil {
-				return nil, nil, nil, fmt.Errorf("NAS PDU not found in Initial Context Setup Request")
+				return nil, nil, nil, false, fmt.Errorf("NAS PDU not found in Initial Context Setup Request")
 			}
 
 			fmt.Println("DEBUG: Received Initial Context Setup Request with NAS PDU")
-			return nasPdu, amfUeNgapID, ranUeNgapID, nil
+			return nasPdu, amfUeNgapID, ranUeNgapID, true, nil
 		}
 
 		// Check for PDU Session Resource Setup Request
 		if pdu.InitiatingMessage.Value.Present == ngapType.InitiatingMessagePresentPDUSessionResourceSetupRequest {
 			pduSessionSetup := pdu.InitiatingMessage.Value.PDUSessionResourceSetupRequest
 			if pduSessionSetup == nil {
-				return nil, nil, nil, fmt.Errorf("PDU session resource setup request is nil")
+				return nil, nil, nil, false, fmt.Errorf("PDU session resource setup request is nil")
 			}
 
 			// Extract IEs
@@ -249,15 +258,15 @@ func (c *NGAPClient) ReceiveNASPDU() (nasPdu []byte, amfUeNgapID *int64, ranUeNg
 			}
 
 			if nasPdu == nil {
-				return nil, nil, nil, fmt.Errorf("NAS PDU not found in PDU Session Resource Setup Request")
+				return nil, nil, nil, false, fmt.Errorf("NAS PDU not found in PDU Session Resource Setup Request")
 			}
 
 			fmt.Println("DEBUG: Received PDU Session Resource Setup Request with NAS PDU")
-			return nasPdu, amfUeNgapID, ranUeNgapID, nil
+			return nasPdu, amfUeNgapID, ranUeNgapID, false, nil
 		}
 	}
 
-	return nil, nil, nil, fmt.Errorf("unexpected NGAP message type (not Downlink NAS Transport or Initial Context Setup)")
+	return nil, nil, nil, false, fmt.Errorf("unexpected NGAP message type (not Downlink NAS Transport or Initial Context Setup)")
 }
 
 // getSCTPAddresses resolves and returns SCTP addresses for AMF and RAN
@@ -286,7 +295,7 @@ func (c *NGAPClient) getSCTPAddresses() (*sctp.SCTPAddr, *sctp.SCTPAddr, error) 
 
 	ranAddr := &sctp.SCTPAddr{
 		IPAddrs: ranIps,
-		Port:    c.ranN2Port,
+		Port:    0, // Use ephemeral port for client connection
 	}
 
 	return amfAddr, ranAddr, nil
@@ -294,11 +303,12 @@ func (c *NGAPClient) getSCTPAddresses() (*sctp.SCTPAddr, *sctp.SCTPAddr, error) 
 
 // PDUSessionSetupInfo contains information from PDU Session Resource Setup Request
 type PDUSessionSetupInfo struct {
-	UEIPAddress string
-	UPFTEID     uint32
-	UPFAddress  string
-	UPFPort     int
-	NASPdu      []byte
+	PDUSessionID uint8
+	UEIPAddress  string
+	UPFTEID      uint32
+	UPFAddress   string
+	UPFPort      int
+	NASPdu       []byte
 }
 
 // ReceivePDUSessionResourceSetupRequest receives and parses PDU Session Resource Setup Request
@@ -335,6 +345,9 @@ func (c *NGAPClient) ReceivePDUSessionResourceSetupRequest() (*PDUSessionSetupIn
 	for _, ie := range setupReq.ProtocolIEs.List {
 		if ie.Id.Value == ngapType.ProtocolIEIDPDUSessionResourceSetupListSUReq {
 			for _, item := range ie.Value.PDUSessionResourceSetupListSUReq.List {
+				// Extract PDU Session ID
+				info.PDUSessionID = uint8(item.PDUSessionID.Value)
+
 				// Extract NAS PDU if present
 				if item.PDUSessionNASPDU != nil {
 					info.NASPdu = item.PDUSessionNASPDU.Value
@@ -497,4 +510,82 @@ func buildPDUSessionResourceSetupResponseTransfer(gnbTEID uint32, gnbIP string) 
 	transfer.DLQosFlowPerTNLInformation.AssociatedQosFlowList.List[0].QosFlowIdentifier.Value = 1
 
 	return transfer
+}
+
+// buildInitialUEMessageForRegistration builds Initial UE Message with MO-Signalling RRC Establishment Cause
+// This is critical for AMF to properly initialize UE context with correct access type
+func buildInitialUEMessageForRegistration(ranUeNgapID int64, nasPdu []byte, plmnID ngapType.PLMNIdentity, tai ngapType.TAI) ngapType.NGAPPDU {
+	var pdu ngapType.NGAPPDU
+	pdu.Present = ngapType.NGAPPDUPresentInitiatingMessage
+	pdu.InitiatingMessage = new(ngapType.InitiatingMessage)
+
+	initiatingMessage := pdu.InitiatingMessage
+	initiatingMessage.ProcedureCode.Value = ngapType.ProcedureCodeInitialUEMessage
+	initiatingMessage.Criticality.Value = ngapType.CriticalityPresentIgnore
+
+	initiatingMessage.Value.Present = ngapType.InitiatingMessagePresentInitialUEMessage
+	initiatingMessage.Value.InitialUEMessage = new(ngapType.InitialUEMessage)
+
+	initialUEMessage := initiatingMessage.Value.InitialUEMessage
+	initialUEMessageIEs := &initialUEMessage.ProtocolIEs
+
+	// RAN UE NGAP ID
+	ie := ngapType.InitialUEMessageIEs{}
+	ie.Id.Value = ngapType.ProtocolIEIDRANUENGAPID
+	ie.Criticality.Value = ngapType.CriticalityPresentReject
+	ie.Value.Present = ngapType.InitialUEMessageIEsPresentRANUENGAPID
+	ie.Value.RANUENGAPID = new(ngapType.RANUENGAPID)
+	ie.Value.RANUENGAPID.Value = ranUeNgapID
+	initialUEMessageIEs.List = append(initialUEMessageIEs.List, ie)
+
+	// NAS-PDU
+	ie = ngapType.InitialUEMessageIEs{}
+	ie.Id.Value = ngapType.ProtocolIEIDNASPDU
+	ie.Criticality.Value = ngapType.CriticalityPresentReject
+	ie.Value.Present = ngapType.InitialUEMessageIEsPresentNASPDU
+	ie.Value.NASPDU = new(ngapType.NASPDU)
+	ie.Value.NASPDU.Value = nasPdu
+	initialUEMessageIEs.List = append(initialUEMessageIEs.List, ie)
+
+	// User Location Information
+	ie = ngapType.InitialUEMessageIEs{}
+	ie.Id.Value = ngapType.ProtocolIEIDUserLocationInformation
+	ie.Criticality.Value = ngapType.CriticalityPresentReject
+	ie.Value.Present = ngapType.InitialUEMessageIEsPresentUserLocationInformation
+	ie.Value.UserLocationInformation = new(ngapType.UserLocationInformation)
+
+	userLocationInformation := ie.Value.UserLocationInformation
+	userLocationInformation.Present = ngapType.UserLocationInformationPresentUserLocationInformationNR
+	userLocationInformation.UserLocationInformationNR = new(ngapType.UserLocationInformationNR)
+
+	// Set PLMN and Cell ID from config
+	userLocationInformationNR := userLocationInformation.UserLocationInformationNR
+	userLocationInformationNR.NRCGI.PLMNIdentity.Value = plmnID.Value
+	userLocationInformationNR.NRCGI.NRCellIdentity.Value = aper.BitString{
+		Bytes:     []byte{0x00, 0x00, 0x00, 0x00, 0x10},
+		BitLength: 36,
+	}
+	userLocationInformationNR.TAI.PLMNIdentity.Value = tai.PLMNIdentity.Value
+	userLocationInformationNR.TAI.TAC.Value = tai.TAC.Value
+	initialUEMessageIEs.List = append(initialUEMessageIEs.List, ie)
+
+	// RRC Establishment Cause (use MT Access like free-ran-ue)
+	ie = ngapType.InitialUEMessageIEs{}
+	ie.Id.Value = ngapType.ProtocolIEIDRRCEstablishmentCause
+	ie.Criticality.Value = ngapType.CriticalityPresentIgnore
+	ie.Value.Present = ngapType.InitialUEMessageIEsPresentRRCEstablishmentCause
+	ie.Value.RRCEstablishmentCause = new(ngapType.RRCEstablishmentCause)
+	ie.Value.RRCEstablishmentCause.Value = ngapType.RRCEstablishmentCausePresentMtAccess
+	initialUEMessageIEs.List = append(initialUEMessageIEs.List, ie)
+
+	// UE Context Request - CRITICAL: Tells AMF to create UE context with proper access type
+	ie = ngapType.InitialUEMessageIEs{}
+	ie.Id.Value = ngapType.ProtocolIEIDUEContextRequest
+	ie.Criticality.Value = ngapType.CriticalityPresentIgnore
+	ie.Value.Present = ngapType.InitialUEMessageIEsPresentUEContextRequest
+	ie.Value.UEContextRequest = new(ngapType.UEContextRequest)
+	ie.Value.UEContextRequest.Value = ngapType.UEContextRequestPresentRequested
+	initialUEMessageIEs.List = append(initialUEMessageIEs.List, ie)
+
+	return pdu
 }

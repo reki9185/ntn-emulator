@@ -5,19 +5,19 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
-	"time"
 
+	"ntn-emulator/common"
 	"ntn-emulator/config"
 	"ntn-emulator/ran"
-	ranlink "ntn-emulator/ran/link"
 	"ntn-emulator/ran/ngap"
 	"ntn-emulator/ue"
-	uenas "ntn-emulator/ue/nas"
 
+	ngapType "github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
 )
 
@@ -26,7 +26,6 @@ func main() {
 	configPath := flag.String("config", "configs/ran.yaml", "Path to RAN config file")
 	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
 	ueConfigPath := flag.String("ue-config", "configs/ue.yaml", "Path to UE config file (for auth)")
-	ueN3IP := flag.String("ue-n3-ip", "127.0.0.100", "UE N3 IP for GTP-U (unique per UE)")
 	flag.Parse()
 
 	// Load RAN configuration
@@ -57,7 +56,6 @@ func main() {
 	log.Println("========================================")
 	log.Printf("UE IMSI: %s\n", imsiStr)
 	log.Printf("Satellite gNB: %s\n", satellite)
-	log.Printf("UE N3 IP: %s\n", *ueN3IP)
 	log.Printf("Config: %s\n", *configPath)
 	log.Println("========================================")
 	log.Println()
@@ -118,77 +116,78 @@ func main() {
 	}
 	log.Printf("✓ NG Setup successful (gNB: %s)\n", gnbName)
 
-	// Perform UE Registration
-	log.Println("\n[Step 3] Performing UE Registration...")
-	nasCodec := uenas.NewNASCodec(uectx)
-	regHandler := uenas.NewRegistrationHandler(uectx, nasCodec, ngapClient)
-	if err := regHandler.PerformRegistration(); err != nil {
-		log.Fatalf("UE Registration failed: %v", err)
-	}
-	log.Printf("✓ UE Registration successful (SUPI: %s)\n", uectx.Supi)
-
-	// Perform PDU Session Establishment
-	log.Println("\n[Step 4] Performing PDU Session Establishment...")
-	pduHandler := ran.NewPDUSessionHandler(uectx, nasCodec, ngapClient)
-
-	// Parse SNSSAI from config
-	sst, err := strconv.ParseInt(ueCfg.UE.PDUSession.SNSSAI.SST, 10, 32)
-	if err != nil {
-		log.Fatalf("Invalid SST in config: %v", err)
-	}
-	snssai := &models.Snssai{Sst: int32(sst), Sd: ueCfg.UE.PDUSession.SNSSAI.SD}
-
-	// Pass RAN N3 IP to PDU handler (RAN will receive GTP-U downlink at this address)
-	if err := pduHandler.EstablishPDUSessionForSeparateUE(1, ueCfg.UE.PDUSession.DNN, snssai, ranCfg.GNB.RANN3IP); err != nil {
-		log.Fatalf("PDU Session Establishment failed: %v\n", err)
-	}
-
-	log.Printf("✓ PDU Session established (ID: %d, DNN: %s)\n", 1, ueCfg.UE.PDUSession.DNN)
-	log.Printf("✓ UE IP Address: %s\n", uectx.UEIPAddress)
-	log.Printf("✓ RAN N3 IP (for GTP-U): %s:%d\n", ranCfg.GNB.RANN3IP, ranCfg.GNB.RANN3Port)
-	log.Printf("✓ UPF TEID: 0x%08x\n", uectx.UPFTEID)
-	log.Printf("✓ RAN TEID: 0x%08x\n", uectx.RANTEID)
-
 	log.Println("\n========================================")
-	log.Println("✅ RAN Control Plane Setup Completed!")
+	log.Println("✅ RAN-AMF Connection Established!")
 	log.Println("========================================")
 
-	// Start RAN Data Plane Server (like free-ran-ue)
-	log.Println("\n[Step 5] Starting RAN Data Plane Server...")
-	upfN3Addr := fmt.Sprintf("%s:%d", ranCfg.GNB.UPFN3IP, ranCfg.GNB.UPFN3Port)
-	dataPlane, err := ranlink.NewRANDataPlane(
-		ranCfg.GNB.RANDataPlaneIP,
-		ranCfg.GNB.RANDataPlanePort,
-		ranCfg.GNB.RANN3IP,
-		ranCfg.GNB.RANN3Port,
-		upfN3Addr,
-		uint32(uectx.UPFTEID), // UL TEID (RAN->UPF) - Use UPF-assigned TEID
-		uint32(uectx.RANTEID), // DL TEID (UPF->RAN) - Use RAN-assigned TEID
-		uectx.Supi,
-	)
+	// Prepare PLMN ID and TAI for UE handler from config
+	plmnID, err := common.PlmnIdToNgap(ranCfg.GNB.PLMNID.MCC, ranCfg.GNB.PLMNID.MNC)
 	if err != nil {
-		log.Fatalf("Failed to create RAN data plane: %v", err)
+		log.Fatalf("Failed to encode PLMN ID: %v", err)
 	}
 
-	// Start the data plane processing
-	if err := dataPlane.Start(); err != nil {
-		log.Fatalf("Failed to start RAN data plane: %v", err)
+	tac, err := common.TacToNgap(ranCfg.GNB.TAI.TAC)
+	if err != nil {
+		log.Fatalf("Failed to encode TAC: %v", err)
 	}
-	defer dataPlane.Stop()
 
-	// Get actual N3 port assigned by kernel
-	actualN3Port := dataPlane.GetN3Port()
+	tai := ngapType.TAI{
+		PLMNIdentity: plmnID,
+		TAC:          tac,
+	}
 
-	log.Printf("✓ RAN Data Plane Server started on port %d\n", ranCfg.GNB.RANDataPlanePort)
-	log.Printf("✓ RAN N3 GTP-U endpoint: %s:%d\n", ranCfg.GNB.RANN3IP, actualN3Port)
-	log.Println("\nYou can now start the UE process with:")
-	log.Println("\nIn Terminal 2, first build:")
+	// Start RAN Control Plane Server to accept UE connections
+	log.Println("\n[Step 3] Starting RAN Control Plane Server...")
+	ranControlPlaneAddr := fmt.Sprintf("%s:%d", ranCfg.GNB.RANDataPlaneIP, ranCfg.GNB.RANControlPlanePort)
+	listener, err := net.Listen("tcp", ranControlPlaneAddr)
+	if err != nil {
+		log.Fatalf("Failed to start control plane listener: %v", err)
+	}
+	defer listener.Close()
+	log.Printf("✓ RAN Control Plane listening on %s\n", ranControlPlaneAddr)
+
+	// Handle UE connections
+	ranUeNgapID := int64(1) // Simple counter for RAN UE NGAP ID
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				log.Printf("Error accepting UE connection: %v\n", err)
+				continue
+			}
+			log.Printf("✓ New UE connection from: %s\n", conn.RemoteAddr())
+
+			// Handle each UE in a goroutine
+			currentID := ranUeNgapID
+			ranUeNgapID++
+
+			go func(c net.Conn, id int64) {
+				defer c.Close()
+
+				handler := ran.NewUEHandler(c, ngapClient, id, plmnID, tai, ranCfg)
+				if err := handler.HandleRegistration(); err != nil {
+					log.Printf("❌ UE registration failed: %v\n", err)
+				} else {
+					log.Println("✓ UE registered successfully")
+				}
+			}(conn, currentID)
+		}
+	}()
+
+	log.Println("")
+	log.Println("==================================================")
+	log.Println("📡 RAN is READY - Waiting for UE...")
+	log.Println("==================================================")
+	log.Println("")
+	log.Println("RAN Services:")
+	log.Printf("  Control Plane: %s:%d\n", ranCfg.GNB.RANDataPlaneIP, ranCfg.GNB.RANControlPlanePort)
+	log.Printf("  Data Plane: %s:%d\n", ranCfg.GNB.RANDataPlaneIP, ranCfg.GNB.RANDataPlanePort)
+	log.Println("")
+	log.Println("You can now start the UE process with:")
 	log.Println("  go build -o /tmp/ntn_ue ./cmd/ue.go")
-	log.Println("\nThen run with sudo:")
-	log.Printf("  sudo /tmp/ntn_ue -ue-ip %s -ran-addr %s:%d -imsi %s\n",
-		uectx.UEIPAddress, ranCfg.GNB.RANDataPlaneIP, ranCfg.GNB.RANDataPlanePort, imsiStr)
-
-	log.Println("\n📡 RAN is ACTIVE (Control + Data Plane) - Press Ctrl+C to stop")
+	log.Println("  sudo ip netns exec ue_ns /tmp/ntn_ue")
+	log.Println("\n📡 Press Ctrl+C to stop RAN")
 
 	// Setup signal handling for cleanup
 	sigChan := make(chan os.Signal, 1)
@@ -197,9 +196,18 @@ func main() {
 	// Wait for interrupt signal
 	<-sigChan
 
-	log.Println("\n\nShutting down RAN...")
-	time.Sleep(100 * time.Millisecond)
-	log.Println("✓ RAN shutdown completed")
+	log.Println("\n\n========================================")
+	log.Println("Initiating Graceful Shutdown...")
+	log.Println("========================================")
+
+	// Close NGAP connection
+	log.Println("\n[Shutdown Step 1] Closing NGAP connection...")
+	ngapClient.Close()
+	log.Println("✓ NGAP connection closed")
+
+	log.Println("\n========================================")
+	log.Println("✓ RAN shutdown completed gracefully")
+	log.Println("========================================")
 }
 
 // insertUEDataToMongoDB inserts UE subscription data to MongoDB
