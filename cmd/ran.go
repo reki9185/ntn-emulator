@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"ntn-emulator/common"
+	"ntn-emulator/util"
 	"ntn-emulator/config"
 	"ntn-emulator/ran"
 	"ntn-emulator/ran/ngap"
@@ -121,12 +121,12 @@ func main() {
 	log.Println("========================================")
 
 	// Prepare PLMN ID and TAI for UE handler from config
-	plmnID, err := common.PlmnIdToNgap(ranCfg.GNB.PLMNID.MCC, ranCfg.GNB.PLMNID.MNC)
+	plmnID, err := util.PlmnIdToNgap(ranCfg.GNB.PLMNID.MCC, ranCfg.GNB.PLMNID.MNC)
 	if err != nil {
 		log.Fatalf("Failed to encode PLMN ID: %v", err)
 	}
 
-	tac, err := common.TacToNgap(ranCfg.GNB.TAI.TAC)
+	tac, err := util.TacToNgap(ranCfg.GNB.TAI.TAC)
 	if err != nil {
 		log.Fatalf("Failed to encode TAC: %v", err)
 	}

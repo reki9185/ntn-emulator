@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"ntn-emulator/common"
+	"ntn-emulator/util"
 	"ntn-emulator/ue"
 
 	"github.com/free5gc/nas"
@@ -88,7 +88,7 @@ func (h *DeregistrationHandler) sendDeregistrationRequest(switchOff bool) error 
 
 	// Send via Uplink NAS Transport
 	// Send plain NAS PDU to RAN control plane via TCP
-	if err := common.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
 		return fmt.Errorf("failed to send deregistration request: %w", err)
 	}
 	fmt.Printf("[Deregistration] Sent %d bytes to RAN\n", len(encodedMsg))
@@ -100,7 +100,7 @@ func (h *DeregistrationHandler) sendDeregistrationRequest(switchOff bool) error 
 // handleDeregistrationAccept receives Deregistration Accept from network
 func (h *DeregistrationHandler) handleDeregistrationAccept() error {
 	// Receive plain NAS PDU from RAN control plane via TCP
-	nasPduBytes, err := common.ReadMessage(h.ranControlConn)
+	nasPduBytes, err := util.ReadMessage(h.ranControlConn)
 	if err != nil {
 		// Check if this is a timeout (AMF might have processed deregistration but not sent accept)
 		return fmt.Errorf("failed to receive deregistration accept: %w (Note: deregistration may still have succeeded on network side)", err)

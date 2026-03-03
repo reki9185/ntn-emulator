@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"ntn-emulator/common"
+	"ntn-emulator/util"
 	"ntn-emulator/ue"
 
 	"github.com/free5gc/nas"
@@ -71,7 +71,7 @@ func (h *PDUSessionHandler) sendPDUSessionEstablishmentRequest(pduSessionID uint
 	}
 
 	// Step 4: Send to RAN
-	if err := common.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
 		return fmt.Errorf("failed to send PDU session establishment request: %w", err)
 	}
 
@@ -82,7 +82,7 @@ func (h *PDUSessionHandler) sendPDUSessionEstablishmentRequest(pduSessionID uint
 // receivePDUSessionEstablishmentAccept receives PDU Session Establishment Accept
 func (h *PDUSessionHandler) receivePDUSessionEstablishmentAccept() error {
 	// Receive NAS PDU from RAN
-	nasPduBytes, err := common.ReadMessage(h.ranControlConn)
+	nasPduBytes, err := util.ReadMessage(h.ranControlConn)
 	if err != nil {
 		return fmt.Errorf("failed to receive PDU session establishment accept: %w", err)
 	}

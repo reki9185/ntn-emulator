@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net"
 
-	"ntn-emulator/common"
 	"ntn-emulator/ue"
+	"ntn-emulator/util"
 
 	"github.com/free5gc/nas"
 	"github.com/free5gc/nas/nasMessage"
@@ -85,7 +85,7 @@ func (h *RegistrationHandler) sendRegistrationRequest() error {
 	}
 
 	// Send plain NAS PDU to RAN control plane via TCP
-	if err := common.WriteMessage(h.ranControlConn, regRequest); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, regRequest); err != nil {
 		return fmt.Errorf("failed to send registration request: %w", err)
 	}
 	fmt.Printf("Sent %d bytes of registration request to RAN\n", len(regRequest))
@@ -96,7 +96,7 @@ func (h *RegistrationHandler) sendRegistrationRequest() error {
 // handleAuthenticationRequest receives and responds to Authentication Request
 func (h *RegistrationHandler) handleAuthenticationRequest() error {
 	// Receive plain NAS PDU from RAN control plane via TCP
-	nasPduBytes, err := common.ReadMessage(h.ranControlConn)
+	nasPduBytes, err := util.ReadMessage(h.ranControlConn)
 	if err != nil {
 		return fmt.Errorf("failed to receive authentication request: %w", err)
 	}
@@ -118,13 +118,11 @@ func (h *RegistrationHandler) handleAuthenticationRequest() error {
 	rand := nasPdu.AuthenticationRequest.GetRANDValue()
 	autn := nasPdu.AuthenticationRequest.GetAUTN()
 
-	// Calculate RES* and derive keys
-	resStar := h.ue.DeriveRESstarAndSetKey(h.ue.AuthenticationSubs, rand[:], "5G:mnc093.mcc208.3gppnetwork.org")
-
-	// Extract and update SQN from AUTN (synchronized with network)
-	// This ensures the next authentication uses the network's SQN
+	// CRITICAL: Extract and update SQN from AUTN BEFORE deriving keys.
+	// DeriveRESstarAndSetKey uses authSubs.SequenceNumber.Sqn to compute SQNxorAK
+	// inside DerivateKamf. The network derives Kamf with the SQN from the AUTN.
+	// If localSQN != networkSQN, SQNxorAK differs → wrong Kamf → MAC failures on re-registration.
 	if newSQN, err := extractSQNFromAUTN(autn[:], rand[:], h.ue.AuthenticationSubs); err == nil {
-		// Update SQN in the UE context for next registration
 		if h.ue.AuthenticationSubs.SequenceNumber != nil {
 			oldSQN := h.ue.AuthenticationSubs.SequenceNumber.Sqn
 			h.ue.AuthenticationSubs.SequenceNumber.Sqn = newSQN
@@ -135,6 +133,10 @@ func (h *RegistrationHandler) handleAuthenticationRequest() error {
 		fmt.Println("   Continuing with current SQN (may cause issues on re-registration)")
 	}
 
+	// Derive RES* and NAS keys from the new Kamf using the network's SQN (just updated above).
+	// DeriveRESstarAndSetKey internally calls DerivateAlgKey() to compute KnasEnc/KnasInt.
+	resStar := h.ue.DeriveRESstarAndSetKey(h.ue.AuthenticationSubs, rand[:], "5G:mnc093.mcc208.3gppnetwork.org")
+
 	// Build and send Authentication Response
 	authResponse, err := BuildAuthenticationResponse(resStar)
 	if err != nil {
@@ -142,7 +144,7 @@ func (h *RegistrationHandler) handleAuthenticationRequest() error {
 	}
 
 	// Send plain NAS PDU to RAN control plane via TCP
-	if err := common.WriteMessage(h.ranControlConn, authResponse); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, authResponse); err != nil {
 		return fmt.Errorf("failed to send authentication response: %w", err)
 	}
 	fmt.Printf("Sent %d bytes of authentication response to RAN\n", len(authResponse))
@@ -153,7 +155,7 @@ func (h *RegistrationHandler) handleAuthenticationRequest() error {
 // handleSecurityModeCommand receives Security Mode Command and responds with Complete
 func (h *RegistrationHandler) handleSecurityModeCommand() error {
 	// Receive plain NAS PDU from RAN control plane via TCP
-	nasPduBytes, err := common.ReadMessage(h.ranControlConn)
+	nasPduBytes, err := util.ReadMessage(h.ranControlConn)
 	if err != nil {
 		return fmt.Errorf("failed to receive security mode command: %w", err)
 	}
@@ -175,6 +177,22 @@ func (h *RegistrationHandler) handleSecurityModeCommand() error {
 	if nasPdu.GmmHeader.GetMessageType() != nas.MsgTypeSecurityModeCommand {
 		return fmt.Errorf("expected Security Mode Command, got message type %d", nasPdu.GmmHeader.GetMessageType())
 	}
+
+	// Extract selected NAS security algorithms from Security Mode Command
+	// and update the UE context before deriving NAS keys
+	secModeCmd := nasPdu.GmmMessage.SecurityModeCommand
+	if secModeCmd != nil {
+		selectedCiphering := secModeCmd.SelectedNASSecurityAlgorithms.GetTypeOfCipheringAlgorithm()
+		selectedIntegrity := secModeCmd.SelectedNASSecurityAlgorithms.GetTypeOfIntegrityProtectionAlgorithm()
+		fmt.Printf("Selected algorithms: ciphering=%d, integrity=%d\n", selectedCiphering, selectedIntegrity)
+		h.ue.RanUeContext.CipheringAlg = selectedCiphering
+		h.ue.RanUeContext.IntegrityAlg = selectedIntegrity
+	}
+
+	// Derive NAS keys (KnasEnc, KnasInt) from the new Kamf established during authentication.
+	// This MUST happen before encoding Security Mode Complete so it uses fresh keys.
+	h.ue.RanUeContext.DerivateAlgKey()
+	fmt.Println("Derived new NAS keys from Kamf")
 
 	// Build Registration Request with 5GMM capability
 	mobileIdentity := BuildMobileIdentity5GS(h.ue.Supi)
@@ -211,7 +229,7 @@ func (h *RegistrationHandler) handleSecurityModeCommand() error {
 
 	// Send Security Mode Complete via Uplink NAS Transport
 	// Send plain NAS PDU to RAN control plane via TCP
-	if err := common.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
 		return fmt.Errorf("failed to send security mode complete: %w", err)
 	}
 	fmt.Printf("Sent %d bytes of security mode complete to RAN\n", len(encodedMsg))
@@ -222,7 +240,7 @@ func (h *RegistrationHandler) handleSecurityModeCommand() error {
 // handleRegistrationAccept receives Registration Accept and sends Registration Complete
 func (h *RegistrationHandler) handleRegistrationAccept() error {
 	// Receive plain NAS PDU from RAN control plane via TCP
-	nasPduBytes, err := common.ReadMessage(h.ranControlConn)
+	nasPduBytes, err := util.ReadMessage(h.ranControlConn)
 	if err != nil {
 		return fmt.Errorf("failed to receive registration accept: %w", err)
 	}
@@ -274,7 +292,7 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 		fmt.Printf("DEBUG: Encoded Identity Response (first 32 bytes): %02x\n", encodedMsg[:min(32, len(encodedMsg))])
 
 		fmt.Println("[UE] DEBUG: Sending Identity Response to RAN...")
-		if err := common.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
+		if err := util.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
 			return fmt.Errorf("failed to send identity response: %w", err)
 		}
 
@@ -282,7 +300,7 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 
 		// Now receive the actual Registration Accept (in Initial Context Setup Request)
 		fmt.Println("[UE] DEBUG: Waiting for Registration Accept after Identity Response...")
-		nasPduBytes, err = common.ReadMessage(h.ranControlConn)
+		nasPduBytes, err = util.ReadMessage(h.ranControlConn)
 		if err != nil {
 			return fmt.Errorf("failed to receive registration accept after identity: %w", err)
 		}
@@ -334,7 +352,7 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 
 	// Send Registration Complete via Uplink NAS Transport
 	// Send plain NAS PDU to RAN control plane via TCP
-	if err := common.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
 		return fmt.Errorf("failed to send registration complete: %w", err)
 	}
 	fmt.Printf("Sent %d bytes of registration complete to RAN\n", len(encodedMsg))
@@ -347,7 +365,7 @@ func (h *RegistrationHandler) handleRegistrationAccept() error {
 // handleConfigurationUpdate receives Configuration Update Command (optional)
 func (h *RegistrationHandler) handleConfigurationUpdate() error {
 	// Receive NGAP message and extract NAS PDU (optional, may timeout)
-	nasPduBytes, err := common.ReadMessage(h.ranControlConn)
+	nasPduBytes, err := util.ReadMessage(h.ranControlConn)
 	if err != nil {
 		return err // May timeout, which is acceptable
 	}
@@ -393,7 +411,7 @@ func (h *RegistrationHandler) handleConfigurationUpdate() error {
 	}
 
 	// Send to RAN
-	if err := common.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
+	if err := util.WriteMessage(h.ranControlConn, encodedMsg); err != nil {
 		return fmt.Errorf("failed to send configuration update complete: %w", err)
 	}
 

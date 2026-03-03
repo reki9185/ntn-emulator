@@ -416,6 +416,86 @@ func (c *NGAPClient) decodePDUSessionResourceSetupRequestTransfer(transferBytes 
 	return info, nil
 }
 
+// ReceiveUEContextReleaseCommand waits for UEContextReleaseCommand from AMF after deregistration
+func (c *NGAPClient) ReceiveUEContextReleaseCommand() (amfUeNgapID int64, ranUeNgapID int64, err error) {
+	recvBuf := make([]byte, 65535)
+	n, err := c.Receive(recvBuf)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to receive NGAP message: %w", err)
+	}
+
+	pdu, err := ngap.Decoder(recvBuf[:n])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to decode NGAP PDU: %w", err)
+	}
+
+	if pdu.Present != ngapType.NGAPPDUPresentInitiatingMessage ||
+		pdu.InitiatingMessage.Value.Present != ngapType.InitiatingMessagePresentUEContextReleaseCommand {
+		return 0, 0, fmt.Errorf("expected UEContextReleaseCommand, got different message")
+	}
+
+	relCmd := pdu.InitiatingMessage.Value.UEContextReleaseCommand
+	for _, ie := range relCmd.ProtocolIEs.List {
+		switch ie.Id.Value {
+		case ngapType.ProtocolIEIDUENGAPIDs:
+			if ie.Value.UENGAPIDs != nil {
+				switch ie.Value.UENGAPIDs.Present {
+				case ngapType.UENGAPIDsPresentUENGAPIDPair:
+					if ie.Value.UENGAPIDs.UENGAPIDPair != nil {
+						amfUeNgapID = ie.Value.UENGAPIDs.UENGAPIDPair.AMFUENGAPID.Value
+						ranUeNgapID = ie.Value.UENGAPIDs.UENGAPIDPair.RANUENGAPID.Value
+					}
+				}
+			}
+		}
+	}
+
+	return amfUeNgapID, ranUeNgapID, nil
+}
+
+// SendUEContextReleaseComplete sends UEContextReleaseComplete to AMF
+func (c *NGAPClient) SendUEContextReleaseComplete(amfUeNgapID, ranUeNgapID int64) error {
+	pdu := buildUEContextReleaseCompletePDU(amfUeNgapID, ranUeNgapID)
+
+	ngapMsg, err := ngap.Encoder(pdu)
+	if err != nil {
+		return fmt.Errorf("failed to encode UEContextReleaseComplete: %w", err)
+	}
+
+	_, err = c.Send(ngapMsg)
+	return err
+}
+
+// buildUEContextReleaseCompletePDU builds the NGAP PDU for UEContextReleaseComplete
+func buildUEContextReleaseCompletePDU(amfUeNgapID, ranUeNgapID int64) ngapType.NGAPPDU {
+	var pdu ngapType.NGAPPDU
+	pdu.Present = ngapType.NGAPPDUPresentSuccessfulOutcome
+	pdu.SuccessfulOutcome = new(ngapType.SuccessfulOutcome)
+	pdu.SuccessfulOutcome.ProcedureCode.Value = ngapType.ProcedureCodeUEContextRelease
+	pdu.SuccessfulOutcome.Criticality.Value = ngapType.CriticalityPresentReject
+	pdu.SuccessfulOutcome.Value.Present = ngapType.SuccessfulOutcomePresentUEContextReleaseComplete
+	pdu.SuccessfulOutcome.Value.UEContextReleaseComplete = new(ngapType.UEContextReleaseComplete)
+
+	releaseComplete := pdu.SuccessfulOutcome.Value.UEContextReleaseComplete
+	releaseComplete.ProtocolIEs.List = make([]ngapType.UEContextReleaseCompleteIEs, 2)
+
+	// AMF UE NGAP ID
+	releaseComplete.ProtocolIEs.List[0].Id.Value = ngapType.ProtocolIEIDAMFUENGAPID
+	releaseComplete.ProtocolIEs.List[0].Criticality.Value = ngapType.CriticalityPresentIgnore
+	releaseComplete.ProtocolIEs.List[0].Value.Present = ngapType.UEContextReleaseCompleteIEsPresentAMFUENGAPID
+	releaseComplete.ProtocolIEs.List[0].Value.AMFUENGAPID = new(ngapType.AMFUENGAPID)
+	releaseComplete.ProtocolIEs.List[0].Value.AMFUENGAPID.Value = amfUeNgapID
+
+	// RAN UE NGAP ID
+	releaseComplete.ProtocolIEs.List[1].Id.Value = ngapType.ProtocolIEIDRANUENGAPID
+	releaseComplete.ProtocolIEs.List[1].Criticality.Value = ngapType.CriticalityPresentIgnore
+	releaseComplete.ProtocolIEs.List[1].Value.Present = ngapType.UEContextReleaseCompleteIEsPresentRANUENGAPID
+	releaseComplete.ProtocolIEs.List[1].Value.RANUENGAPID = new(ngapType.RANUENGAPID)
+	releaseComplete.ProtocolIEs.List[1].Value.RANUENGAPID.Value = ranUeNgapID
+
+	return pdu
+}
+
 // SendPDUSessionResourceSetupResponse sends PDU Session Resource Setup Response
 func (c *NGAPClient) SendPDUSessionResourceSetupResponse(amfUeNgapID, ranUeNgapID int64, pduSessionID uint8, gnbTEID uint32) error {
 	// Use default RAN N2 IP (control plane IP)

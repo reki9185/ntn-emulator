@@ -5,10 +5,10 @@ import (
 	"log"
 	"net"
 
-	"ntn-emulator/common"
 	"ntn-emulator/config"
 	ranlink "ntn-emulator/ran/link"
 	"ntn-emulator/ran/ngap"
+	"ntn-emulator/util"
 
 	"github.com/free5gc/nas"
 	"github.com/free5gc/nas/nasType"
@@ -44,7 +44,7 @@ func (h *UEHandler) HandleRegistration() error {
 	log.Println("[RAN->UE] Starting UE registration handling...")
 
 	// Step 1: Receive UE Registration Request (plain NAS)
-	ueRegRequest, err := common.ReadMessage(h.conn)
+	ueRegRequest, err := util.ReadMessage(h.conn)
 	if err != nil {
 		return fmt.Errorf("failed to receive registration request from UE: %w", err)
 	}
@@ -78,13 +78,13 @@ func (h *UEHandler) HandleRegistration() error {
 	}
 	log.Printf("[RAN<-AMF] Received %d bytes of authentication request\n", len(nasAuthReq))
 
-	if err := common.WriteMessage(h.conn, nasAuthReq); err != nil {
+	if err := util.WriteMessage(h.conn, nasAuthReq); err != nil {
 		return fmt.Errorf("failed to send auth request to UE: %w", err)
 	}
 	log.Println("[RAN->UE] Forwarded authentication request")
 
 	// Step 3: Receive Authentication Response from UE, forward to AMF
-	ueAuthResp, err := common.ReadMessage(h.conn)
+	ueAuthResp, err := util.ReadMessage(h.conn)
 	if err != nil {
 		return fmt.Errorf("failed to receive auth response from UE: %w", err)
 	}
@@ -102,13 +102,13 @@ func (h *UEHandler) HandleRegistration() error {
 	}
 	log.Printf("[RAN<-AMF] Received %d bytes of security mode command\n", len(nasSecCmd))
 
-	if err := common.WriteMessage(h.conn, nasSecCmd); err != nil {
+	if err := util.WriteMessage(h.conn, nasSecCmd); err != nil {
 		return fmt.Errorf("failed to send security mode command to UE: %w", err)
 	}
 	log.Println("[RAN->UE] Forwarded security mode command")
 
 	// Step 5: Receive Security Mode Complete from UE, forward to AMF
-	ueSecComplete, err := common.ReadMessage(h.conn)
+	ueSecComplete, err := util.ReadMessage(h.conn)
 	if err != nil {
 		return fmt.Errorf("failed to receive security mode complete from UE: %w", err)
 	}
@@ -131,14 +131,14 @@ func (h *UEHandler) HandleRegistration() error {
 
 		// Forward NAS message to UE
 		log.Println("[RAN] DEBUG: Forwarding NAS message to UE...")
-		if err := common.WriteMessage(h.conn, nasMessage); err != nil {
+		if err := util.WriteMessage(h.conn, nasMessage); err != nil {
 			return fmt.Errorf("failed to forward NAS message to UE: %w", err)
 		}
 		log.Println("[RAN->UE] Forwarded NAS message")
 
 		// Receive response from UE
 		log.Println("[RAN] DEBUG: Waiting for response from UE...")
-		ueResponse, err := common.ReadMessage(h.conn)
+		ueResponse, err := util.ReadMessage(h.conn)
 		if err != nil {
 			return fmt.Errorf("failed to receive response from UE: %w", err)
 		}
@@ -180,13 +180,13 @@ func (h *UEHandler) HandleRegistration() error {
 	log.Printf("[RAN<-AMF] Received %d bytes (Configuration Update Command)\n", len(nasConfigUpdate))
 
 	// Forward to UE
-	if err := common.WriteMessage(h.conn, nasConfigUpdate); err != nil {
+	if err := util.WriteMessage(h.conn, nasConfigUpdate); err != nil {
 		return fmt.Errorf("failed to send configuration update to UE: %w", err)
 	}
 	log.Println("[RAN->UE] Forwarded Configuration Update Command")
 
 	// Receive Configuration Update Complete from UE
-	ueConfigUpdateComplete, err := common.ReadMessage(h.conn)
+	ueConfigUpdateComplete, err := util.ReadMessage(h.conn)
 	if err != nil {
 		return fmt.Errorf("failed to receive configuration update complete from UE: %w", err)
 	}
@@ -205,7 +205,7 @@ func (h *UEHandler) HandleRegistration() error {
 
 	// Receive PDU Session Establishment Request from UE (wrapped in UL NAS Transport)
 	log.Println("[RAN] DEBUG: Waiting for PDU Session Establishment Request from UE...")
-	uePDUSessionReq, err := common.ReadMessage(h.conn)
+	uePDUSessionReq, err := util.ReadMessage(h.conn)
 	if err != nil {
 		return fmt.Errorf("failed to receive PDU session establishment request from UE: %w", err)
 	}
@@ -241,7 +241,7 @@ func (h *UEHandler) HandleRegistration() error {
 	// Forward PDU Session Establishment Accept to UE (if NAS PDU present)
 	if pduSessionSetupInfo.NASPdu != nil && len(pduSessionSetupInfo.NASPdu) > 0 {
 		log.Println("[RAN] DEBUG: Forwarding PDU Session Establishment Accept to UE...")
-		if err := common.WriteMessage(h.conn, pduSessionSetupInfo.NASPdu); err != nil {
+		if err := util.WriteMessage(h.conn, pduSessionSetupInfo.NASPdu); err != nil {
 			return fmt.Errorf("failed to forward PDU session establishment accept to UE: %w", err)
 		}
 		log.Println("[RAN->UE] Forwarded PDU Session Establishment Accept")
@@ -285,9 +285,60 @@ func (h *UEHandler) HandleRegistration() error {
 	log.Println("  Press Ctrl+C to stop or wait for UE disconnect")
 	log.Println("========================================")
 
-	// Keep the handler running to maintain data plane
-	// Wait for connection to close
-	select {}
+	// Keep data plane running and handle deregistration
+	if err := h.handleDeregistration(); err != nil {
+		log.Printf("[RAN] Deregistration error: %v\n", err)
+	}
+
+	return nil
+}
+
+// handleDeregistration waits for UE deregistration request and completes the flow
+func (h *UEHandler) handleDeregistration() error {
+	log.Println("[RAN] Waiting for UE deregistration...")
+
+	// Step 1: Receive Deregistration Request from UE (plain NAS via TCP)
+	ueDeregRequest, err := util.ReadMessage(h.conn)
+	if err != nil {
+		// Connection closed — UE disconnected without deregistering (e.g. switch-off)
+		log.Printf("[RAN] UE connection closed (switch-off or crash): %v\n", err)
+		return nil
+	}
+	log.Printf("[RAN<-UE] Received %d bytes of deregistration request\n", len(ueDeregRequest))
+
+	// Step 2: Forward to AMF via UplinkNASTransport
+	if err := h.ngapClient.SendUplinkNASTransport(h.amfUeNgapID, h.ranUeNgapID, ueDeregRequest); err != nil {
+		return fmt.Errorf("failed to forward deregistration request to AMF: %w", err)
+	}
+	log.Println("[RAN->AMF] Forwarded Deregistration Request")
+
+	// Step 3: Receive Deregistration Accept from AMF (DownlinkNASTransport)
+	nasDeregAccept, _, _, err := h.ngapClient.ReceiveNASPDU()
+	if err != nil {
+		return fmt.Errorf("failed to receive deregistration accept from AMF: %w", err)
+	}
+	log.Printf("[RAN<-AMF] Received %d bytes of deregistration accept\n", len(nasDeregAccept))
+
+	// Step 4: Forward Deregistration Accept to UE
+	if err := util.WriteMessage(h.conn, nasDeregAccept); err != nil {
+		log.Printf("[RAN] Could not forward deregistration accept to UE (may have disconnected): %v\n", err)
+	} else {
+		log.Println("[RAN->UE] Forwarded Deregistration Accept")
+	}
+
+	// Step 6: Receive UEContextReleaseCommand from AMF
+	amfID, ranID, err := h.ngapClient.ReceiveUEContextReleaseCommand()
+	if err != nil {
+		return fmt.Errorf("failed to receive UEContextReleaseCommand: %w", err)
+	}
+	log.Println("[RAN<-AMF] Received UEContextReleaseCommand")
+
+	// Step 7: Send UEContextReleaseComplete to AMF
+	if err := h.ngapClient.SendUEContextReleaseComplete(amfID, ranID); err != nil {
+		return fmt.Errorf("failed to send UEContextReleaseComplete: %w", err)
+	}
+	log.Println("[RAN->AMF] Sent UEContextReleaseComplete")
+	log.Println("✓ UE deregistered successfully")
 
 	return nil
 }
