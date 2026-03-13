@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"ntn-emulator/config"
+	ntnlink "ntn-emulator/ntn-link"
 	"ntn-emulator/ue"
 	uelink "ntn-emulator/ue/link"
 	uenas "ntn-emulator/ue/nas"
@@ -25,7 +27,6 @@ func main() {
 	ranAddr := flag.String("ran-addr", "", "RAN data plane address (overrides config)")
 	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
 	tunName := flag.String("tun", "", "TUN interface name (overrides config)")
-
 	flag.Parse()
 
 	// Load UE configuration
@@ -168,6 +169,50 @@ func main() {
 	// Setup signal handling for cleanup
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// ── Satellite watcher: auto-switch data plane when ntn_state.json changes ──
+	if ueCfg.UE.NTNStateFile != "" && len(ueCfg.UE.SatelliteRANMap) > 0 {
+		satWatcher := ntnlink.NewJSONWatcher(ueCfg.UE.NTNStateFile, 200*time.Millisecond)
+		if err := satWatcher.Start(); err != nil {
+			log.Printf("⚠️  [UE] Failed to start satellite watcher: %v\n", err)
+		} else {
+			defer satWatcher.Stop()
+			// Record the satellite we started with so we only act on changes.
+			var currentSatellite string
+			if state := satWatcher.GetCurrentState(); state != nil {
+				currentSatellite = state.Satellite
+			}
+			log.Printf("✓ [UE] Satellite watcher started (current=%s, watching %s)\n",
+				currentSatellite, ueCfg.UE.NTNStateFile)
+
+			go func() {
+				updateCh := satWatcher.GetUpdateChannel()
+				for state := range updateCh {
+					if state == nil || state.Satellite == currentSatellite {
+						continue
+					}
+					newSat := state.Satellite
+					entry, ok := ueCfg.UE.SatelliteRANMap[newSat]
+					if !ok {
+						log.Printf("⚠️  [UE] No RAN mapping for satellite %s — ignoring\n", newSat)
+						currentSatellite = newSat
+						continue
+					}
+					newAddr := fmt.Sprintf("%s:%d", entry.DataPlaneIP, entry.DataPlanePort)
+					log.Printf("🛰️  [UE] Satellite changed: %s → %s\n", currentSatellite, newSat)
+					log.Printf("   Switching data plane to %s in 1s (allowing path switch to complete)\n", newAddr)
+					currentSatellite = newSat
+					// Wait for RAN-2 path switch to complete before reconnecting.
+					time.Sleep(1 * time.Second)
+					if err := ueDataPlane.Reconnect(newAddr); err != nil {
+						log.Printf("❌ [UE] Data plane reconnect failed: %v\n", err)
+					} else {
+						log.Printf("✅ [UE] Data plane switched to %s (satellite %s)\n", newAddr, newSat)
+					}
+				}
+			}()
+		}
+	}
 
 	// Wait for interrupt signal
 	<-sigChan

@@ -1,0 +1,37 @@
+gnb:
+  amfN2Ip: "10.0.1.1" # AMF N2 IP at core network
+  ranN2Ip: "10.0.1.3" # RAN-2 N2 IP for connecting to AMF (DIFFERENT from RAN-1)
+  upfN3Ip: "10.0.1.1" # UPF N3 IP at core network
+  ranN3Ip: "10.0.1.3" # RAN-2 N3 IP for connecting to UPF (DIFFERENT from RAN-1)
+
+  ranDataPlaneIp: "10.0.2.1" # RAN Data Plane IP open for UE connection (can share with RAN-1)
+
+  amfN2Port: 38412 # AMF N2 SCTP port at core network
+  ranN2Port: 38414 # RAN-2 N2 SCTP port (DIFFERENT from RAN-1's 38413)
+  upfN3Port: 2152 # UPF N3 GTP-U port at core network
+  ranN3Port: 2152 # RAN-2 N3 GTP-U port (GTP-U standard requires port 2152)
+
+  ranControlPlanePort: 31415 # RAN-2 Control Plane port (DIFFERENT from RAN-1's 31413)
+  ranDataPlanePort: 31416 # RAN-2 Data Plane port (DIFFERENT from RAN-1's 31414)
+
+  gnbId: "000002" # gNB ID (DIFFERENT from RAN-1's 000001)
+  gnbName: "STARLINK-181" # gNB name (DIFFERENT from RAN-1)
+
+  plmnId:
+    mcc: "208" # Mobile Country Code
+    mnc: "93" # Mobile Network Code
+
+  tai:
+    tac: "000001" # Tracking Area Code (SAME as RAN-1 - both in same TAI)
+    broadcastPlmnId:
+      mcc: "208" # Mobile Country Code
+      mnc: "93" # Mobile Network Code
+
+  snssai:
+    sst: "1" # Slice/Service Type
+    sd: "010203" # Slice Differentiator
+
+  ntnStateFile: "/home/ntn/ntn-emulator/ntn_state.json" # NTN state file for dynamic delay
+
+logger:
+  level: "info" # error, warn, info, debug, trace, test

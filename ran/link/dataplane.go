@@ -208,9 +208,8 @@ func (rdp *RANDataPlane) receiveFromUE() {
 		} else {
 			// Regular data packet - apply NTN delay if enabled
 			if rdp.ntnLink != nil {
-				// Enqueue in UE-RAN uplink scheduler
-				scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
-				scheduler.Enqueue(data)
+				// Enqueue in UE-RAN uplink scheduler (UE -> RAN leg)
+				rdp.ntnLink.GetUERanUplinkScheduler().Enqueue(data)
 			} else {
 				// No NTN delay - direct forwarding
 				rdp.uplinkChan <- data
@@ -261,9 +260,8 @@ func (rdp *RANDataPlane) receiveFromUPF() {
 
 		// Apply NTN delay if enabled
 		if rdp.ntnLink != nil {
-			// Enqueue in RAN-5G downlink scheduler
-			scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
-			scheduler.Enqueue(data)
+			// Enqueue in RAN-5G downlink scheduler (UPF -> RAN leg)
+			rdp.ntnLink.GetRan5GDownlinkScheduler().Enqueue(data)
 		} else {
 			// No NTN delay - direct forwarding
 			rdp.downlinkChan <- data
@@ -295,9 +293,8 @@ func (rdp *RANDataPlane) forwardUplinkToUPF() {
 
 			// Apply NTN delay if enabled
 			if rdp.ntnLink != nil {
-				// Enqueue in RAN-5G uplink scheduler
-				scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
-				scheduler.Enqueue(gtpPacket)
+				// Enqueue in RAN-5G uplink scheduler (RAN -> UPF leg)
+				rdp.ntnLink.GetRan5GUplinkScheduler().Enqueue(gtpPacket)
 			} else {
 				// No NTN delay - send directly
 				n, err := rdp.upfConn.WriteToUDP(gtpPacket, rdp.upfAddr)
@@ -421,9 +418,8 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 
 			// Apply NTN delay if enabled
 			if rdp.ntnLink != nil {
-				// Enqueue in UE-RAN downlink scheduler
-				scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
-				scheduler.Enqueue(payload)
+				// Enqueue in UE-RAN downlink scheduler (RAN -> UE leg)
+				rdp.ntnLink.GetUERanDownlinkScheduler().Enqueue(payload)
 			} else {
 				// No NTN delay - send directly to UE
 				n, err := rdp.ranServer.WriteToUDP(payload, ueAddr)
@@ -437,14 +433,11 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 	}
 }
 
-// readUERanUplinkScheduler reads packets from UE-RAN uplink scheduler
-// and forwards them to the uplink channel
+// readUERanUplinkScheduler reads delayed packets from UE-RAN uplink scheduler
+// (UE -> RAN leg) and forwards them into the uplink pipeline
 func (rdp *RANDataPlane) readUERanUplinkScheduler() {
 	defer rdp.wg.Done()
-
-	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
-	readyChan := scheduler.GetReadyChannel()
-
+	readyChan := rdp.ntnLink.GetUERanUplinkScheduler().GetReadyChannel()
 	for {
 		select {
 		case <-rdp.ctx.Done():
@@ -458,50 +451,11 @@ func (rdp *RANDataPlane) readUERanUplinkScheduler() {
 	}
 }
 
-// readUERanDownlinkScheduler reads packets from UE-RAN downlink scheduler
-// and sends them to the UE
-func (rdp *RANDataPlane) readUERanDownlinkScheduler() {
-	defer rdp.wg.Done()
-
-	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkUERan)
-	readyChan := scheduler.GetReadyChannel()
-
-	for {
-		select {
-		case <-rdp.ctx.Done():
-			return
-		case payload := <-readyChan:
-			if payload == nil {
-				return
-			}
-
-			// Get UE address
-			rdp.ueAddrLock.RLock()
-			ueAddr := rdp.ueAddr
-			rdp.ueAddrLock.RUnlock()
-
-			if ueAddr == nil {
-				log.Printf("⚠️  RAN: UE not connected, dropping scheduled downlink packet\n")
-				continue
-			}
-
-			// Send raw IP packet to UE
-			_, err := rdp.ranServer.WriteToUDP(payload, ueAddr)
-			if err != nil {
-				log.Printf("⚠️  RAN: Error sending scheduled packet to UE: %v\n", err)
-			}
-		}
-	}
-}
-
-// readRan5GUplinkScheduler reads packets from RAN-5G uplink scheduler
-// and sends them to the UPF
+// readRan5GUplinkScheduler reads delayed packets from RAN-5G uplink scheduler
+// (RAN -> UPF leg) and sends them to the UPF
 func (rdp *RANDataPlane) readRan5GUplinkScheduler() {
 	defer rdp.wg.Done()
-
-	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
-	readyChan := scheduler.GetReadyChannel()
-
+	readyChan := rdp.ntnLink.GetRan5GUplinkScheduler().GetReadyChannel()
 	for {
 		select {
 		case <-rdp.ctx.Done():
@@ -510,8 +464,6 @@ func (rdp *RANDataPlane) readRan5GUplinkScheduler() {
 			if gtpPacket == nil {
 				return
 			}
-
-			// Send GTP-U packet to UPF
 			_, err := rdp.upfConn.WriteToUDP(gtpPacket, rdp.upfAddr)
 			if err != nil {
 				log.Printf("⚠️  RAN: Error sending scheduled packet to UPF: %v\n", err)
@@ -520,14 +472,11 @@ func (rdp *RANDataPlane) readRan5GUplinkScheduler() {
 	}
 }
 
-// readRan5GDownlinkScheduler reads packets from RAN-5G downlink scheduler
-// and forwards them to the downlink channel
+// readRan5GDownlinkScheduler reads delayed packets from RAN-5G downlink scheduler
+// (UPF -> RAN leg) and forwards them into the downlink pipeline
 func (rdp *RANDataPlane) readRan5GDownlinkScheduler() {
 	defer rdp.wg.Done()
-
-	scheduler := rdp.ntnLink.GetScheduler(ntnlink.LinkRan5G)
-	readyChan := scheduler.GetReadyChannel()
-
+	readyChan := rdp.ntnLink.GetRan5GDownlinkScheduler().GetReadyChannel()
 	for {
 		select {
 		case <-rdp.ctx.Done():
@@ -537,6 +486,34 @@ func (rdp *RANDataPlane) readRan5GDownlinkScheduler() {
 				return
 			}
 			rdp.downlinkChan <- packet
+		}
+	}
+}
+
+// readUERanDownlinkScheduler reads delayed packets from UE-RAN downlink scheduler
+// (RAN -> UE leg) and sends them directly to the UE
+func (rdp *RANDataPlane) readUERanDownlinkScheduler() {
+	defer rdp.wg.Done()
+	readyChan := rdp.ntnLink.GetUERanDownlinkScheduler().GetReadyChannel()
+	for {
+		select {
+		case <-rdp.ctx.Done():
+			return
+		case payload := <-readyChan:
+			if payload == nil {
+				return
+			}
+			rdp.ueAddrLock.RLock()
+			ueAddr := rdp.ueAddr
+			rdp.ueAddrLock.RUnlock()
+			if ueAddr == nil {
+				log.Printf("⚠️  RAN: UE not connected, dropping scheduled downlink packet\n")
+				continue
+			}
+			_, err := rdp.ranServer.WriteToUDP(payload, ueAddr)
+			if err != nil {
+				log.Printf("⚠️  RAN: Error sending scheduled packet to UE: %v\n", err)
+			}
 		}
 	}
 }

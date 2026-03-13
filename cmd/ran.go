@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"syscall"
 
-	"ntn-emulator/util"
 	"ntn-emulator/config"
 	"ntn-emulator/ran"
 	"ntn-emulator/ran/ngap"
 	"ntn-emulator/ue"
+	"ntn-emulator/util"
 
 	ngapType "github.com/free5gc/ngap/ngapType"
 	"github.com/free5gc/openapi/models"
@@ -26,6 +26,12 @@ func main() {
 	configPath := flag.String("config", "configs/ran.yaml", "Path to RAN config file")
 	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
 	ueConfigPath := flag.String("ue-config", "configs/ue.yaml", "Path to UE config file (for auth)")
+	// -xn-listen: RAN-1 exposes the UE context on this TCP address after PDU
+	// session establishment so RAN-2 can fetch it when performing a path switch.
+	xnListen := flag.String("xn-listen", "", "TCP address for Xn context server, e.g. 127.0.0.1:9001 (source RAN only)")
+	// -xn-peer: RAN-2 connects to this address to fetch UE context from RAN-1
+	// when the satellite in ntn_state.json matches this RAN's gnbName.
+	xnPeer := flag.String("xn-peer", "", "TCP address of RAN-1 Xn context server, e.g. 127.0.0.1:9001 (target RAN only)")
 	flag.Parse()
 
 	// Load RAN configuration
@@ -138,6 +144,29 @@ func main() {
 
 	// Start RAN Control Plane Server to accept UE connections
 	log.Println("\n[Step 3] Starting RAN Control Plane Server...")
+	// ── Unified RAN Mode: Continuous Bidirectional Handover ────────────────────
+	// Create Xn server if -xn-listen is set (serves UE context to peer RAN when needed).
+	var xnSrv *ran.XnServer
+	if *xnListen != "" {
+		xnSrv = ran.NewXnServer(*xnListen)
+		if err := xnSrv.Start(); err != nil {
+			log.Fatalf("Failed to start Xn server: %v", err)
+		}
+		defer xnSrv.Stop()
+		log.Printf("✓ Xn context server started on %s\n", *xnListen)
+	}
+
+	// Start continuous Handover Controller in the background
+	if *xnPeer != "" {
+		log.Printf("\n🛰️  Continuous Handover mode enabled (xn-peer=%s)\n", *xnPeer)
+		go ran.RunHandoverController(ngapClient, ranCfg, xnSrv, *xnPeer)
+	} else {
+		log.Printf("\n🛰️  No -xn-peer provided. Handover controller disabled. (Source-only mode)\n")
+	}
+
+	// Always start the Control Plane listener to handle normal UE registrations
+	// or intermediate NAS messages.
+
 	ranControlPlaneAddr := fmt.Sprintf("%s:%d", ranCfg.GNB.RANDataPlaneIP, ranCfg.GNB.RANControlPlanePort)
 	listener, err := net.Listen("tcp", ranControlPlaneAddr)
 	if err != nil {
@@ -165,7 +194,7 @@ func main() {
 			go func(c net.Conn, id int64) {
 				defer c.Close()
 
-				handler := ran.NewUEHandler(c, ngapClient, id, plmnID, tai, ranCfg)
+				handler := ran.NewUEHandler(c, ngapClient, id, plmnID, tai, ranCfg, xnSrv)
 				if err := handler.HandleRegistration(); err != nil {
 					log.Printf("❌ UE registration failed: %v\n", err)
 				} else {

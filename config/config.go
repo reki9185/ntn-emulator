@@ -38,10 +38,19 @@ type RANConfig struct {
 			SST string `yaml:"sst"`
 			SD  string `yaml:"sd"`
 		} `yaml:"snssai"`
+		NTNStateFile string `yaml:"ntnStateFile"` // Path to NTN state JSON file
 	} `yaml:"gnb"`
 	Logger struct {
 		Level string `yaml:"level"`
 	} `yaml:"logger"`
+}
+
+// SatelliteRANEntry maps a satellite name to a RAN data plane endpoint.
+// Used in UEConfig.SatelliteRANMap so the UE knows which port to reconnect
+// to when a satellite handover occurs.
+type SatelliteRANEntry struct {
+	DataPlaneIP   string `yaml:"dataPlaneIp"`
+	DataPlanePort int    `yaml:"dataPlanePort"`
 }
 
 // UEConfig represents the UE configuration from ue.yaml
@@ -92,6 +101,11 @@ type UEConfig struct {
 		} `yaml:"nrdc"`
 		UETunnelDevice    string `yaml:"ueTunnelDevice"`
 		IgnoreSetupTunnel bool   `yaml:"ignoreSetupTunnel"`
+		// NTN state file used by the UE to watch satellite changes for handover.
+		NTNStateFile string `yaml:"ntnStateFile"`
+		// SatelliteRANMap maps a satellite name to the RAN data plane endpoint
+		// that the UE should switch to when that satellite becomes active.
+		SatelliteRANMap map[string]SatelliteRANEntry `yaml:"satelliteRanMap"`
 	} `yaml:"ue"`
 	Logger struct {
 		Level string `yaml:"level"`

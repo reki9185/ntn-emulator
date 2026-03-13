@@ -23,8 +23,8 @@ func main() {
 		if old == nil {
 			fmt.Printf("✓ Initial state detected\n")
 		} else {
-			fmt.Printf("✓ State changed: %s (%.1fms) -> %s (%.1fms)\n",
-				old.Satellite, old.Delay, new.Satellite, new.Delay)
+			fmt.Printf("✓ State changed: %s (ue-ran:%.1fms) -> %s (ue-ran:%.1fms)\n",
+				old.Satellite, old.DelayUERan, new.Satellite, new.DelayUERan)
 		}
 	})
 

@@ -25,10 +25,15 @@ type UEHandler struct {
 	tai         ngapType.TAI
 	mobileIMSI  string
 	ranConfig   *config.RANConfig
+	// xnServer, when non-nil, is notified with the UE context after PDU session
+	// establishment so RAN-2 can retrieve it via the Xn interface.
+	xnServer *XnServer
 }
 
-// NewUEHandler creates a new UE handler
-func NewUEHandler(conn net.Conn, ngapClient *ngap.NGAPClient, ranUeNgapID int64, plmnID ngapType.PLMNIdentity, tai ngapType.TAI, ranConfig *config.RANConfig) *UEHandler {
+// NewUEHandler creates a new UE handler.
+// xnServer, when non-nil, receives the UE context after PDU session establishment
+// so it can be served to the target RAN (RAN-2) via the Xn interface.
+func NewUEHandler(conn net.Conn, ngapClient *ngap.NGAPClient, ranUeNgapID int64, plmnID ngapType.PLMNIdentity, tai ngapType.TAI, ranConfig *config.RANConfig, xnServer *XnServer) *UEHandler {
 	return &UEHandler{
 		conn:        conn,
 		ngapClient:  ngapClient,
@@ -36,6 +41,7 @@ func NewUEHandler(conn net.Conn, ngapClient *ngap.NGAPClient, ranUeNgapID int64,
 		plmnID:      plmnID,
 		tai:         tai,
 		ranConfig:   ranConfig,
+		xnServer:    xnServer,
 	}
 }
 
@@ -266,7 +272,7 @@ func (h *UEHandler) HandleRegistration() error {
 		pduSessionSetupInfo.UPFTEID, // ulTEID: UPF's allocated TEID, placed in GTP header when RAN sends to UPF
 		ranUplinkTEID,               // dlTEID: RAN-advertised TEID, UPF places this in GTP header when sending to RAN
 		h.mobileIMSI,
-		"ntn_state.json",
+		h.ranConfig.GNB.NTNStateFile, // Use configured NTN state file path
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create data plane: %w", err)
@@ -275,7 +281,21 @@ func (h *UEHandler) HandleRegistration() error {
 	if err := dataPlane.Start(); err != nil {
 		return fmt.Errorf("failed to start data plane: %w", err)
 	}
-	defer dataPlane.Stop()
+	
+	RegisterDataPlane(dataPlane)
+	defer StopDataPlane()
+
+	// Publish UE context to Xn server so RAN-2 can retrieve it for Path Switch.
+	if h.xnServer != nil {
+		h.xnServer.SetContext(&UEHandoverContext{
+			IMSI:         h.mobileIMSI,
+			AmfUeNgapID:  h.amfUeNgapID,
+			PDUSessionID: pduSessionSetupInfo.PDUSessionID,
+			UPFN3IP:      pduSessionSetupInfo.UPFAddress,
+			UPFPort:      pduSessionSetupInfo.UPFPort,
+			UPFTEID:      pduSessionSetupInfo.UPFTEID,
+		})
+	}
 
 	log.Println("✓ RAN Data Plane started successfully")
 	log.Println("\n========================================")

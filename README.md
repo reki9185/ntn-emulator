@@ -136,6 +136,33 @@ sudo ip netns exec ue_ns /tmp/ntn_ue
 sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
 ```
 
+7. Test handover
+
+Setup multi-ran namespace and start free5GC.
+
+```bash
+sudo ./setup_multi_ran.sh up
+```
+
+```bash
+# Terminal 1: Start RAN-1 (STARLINK-180)
+sudo ip netns exec ran_ns /tmp/ntn_ran \
+  -config configs/ran.yaml \
+  -xn-listen 10.0.1.2:9001 -xn-peer 10.0.1.3:9002
+
+# Terminal 2: Start RAN-2 (STARLINK-181)
+sudo ip netns exec ran_ns /tmp/ntn_ran \
+  -config configs/ran_2.yaml \
+  -xn-listen 10.0.1.3:9002 -xn-peer 10.0.1.2:9001
+
+# Terminal 3: Start UE
+sudo ip netns exec ue_ns /tmp/ntn_ue -config configs/ue.yaml
+
+# Terminal 4: Ping continually
+sudo ip netns exec ue_ns ping -I ueTun0 8.8.8.8
+```
+
+
 ### Clean
 
 1. Shutdown RAN and UE

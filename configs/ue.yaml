@@ -45,5 +45,17 @@ ue:
   ueTunnelDevice: "ueTun0" # UE Tunnel Device Name
   ignoreSetupTunnel: false # Ignore Setup Tunnel
 
+  # NTN state file — watched by UE to detect satellite changes and trigger handover
+  ntnStateFile: "/home/ntn/ntn-emulator/ntn_state.json"
+
+  # Map each satellite name to the RAN data plane endpoint the UE should switch to
+  satelliteRanMap:
+    STARLINK-180:
+      dataPlaneIp: "10.0.2.1"
+      dataPlanePort: 31414
+    STARLINK-181:
+      dataPlaneIp: "10.0.2.1"
+      dataPlanePort: 31416
+
 logger:
   level: "info" # error, warn, info, debug, trace

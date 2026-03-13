@@ -1,6 +1,6 @@
 {
   "timestamp": 130,
   "satellite": "STARLINK-180",
-  "delay_ue_ran": 3,
-  "delay_ran_5g": 5
+  "delay_ue_ran": 0,
+  "delay_ran_5g": 0
 }

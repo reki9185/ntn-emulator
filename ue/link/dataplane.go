@@ -22,8 +22,9 @@ type UEDataPlane struct {
 	imsi     string
 	tunIface *tun.TUNInterface
 
-	// Network connection
-	ranConn *net.UDPConn
+	// Network connection — protected by ranConnMu so Reconnect can swap it safely.
+	ranConn   *net.UDPConn
+	ranConnMu sync.RWMutex
 
 	// Channels for packet forwarding
 	fromTunChan chan []byte
@@ -99,10 +100,53 @@ func (udp *UEDataPlane) Start() error {
 // Stop stops the UE data plane
 func (udp *UEDataPlane) Stop() {
 	udp.cancel()
-	if udp.ranConn != nil {
-		udp.ranConn.Close()
+	udp.ranConnMu.RLock()
+	conn := udp.ranConn
+	udp.ranConnMu.RUnlock()
+	if conn != nil {
+		conn.Close()
 	}
 	udp.wg.Wait()
+}
+
+// Reconnect switches the UE data plane to a new RAN address (e.g. RAN-2 after path switch).
+// It opens a new UDP connection, sends an INIT packet so RAN-2 registers the UE address,
+// then closes the old connection. In-flight packets from the old connection are discarded.
+func (udp *UEDataPlane) Reconnect(newRanAddr string) error {
+	ranUDPAddr, err := net.ResolveUDPAddr("udp", newRanAddr)
+	if err != nil {
+		return fmt.Errorf("resolve new RAN address: %w", err)
+	}
+
+	localAddr, _ := net.ResolveUDPAddr("udp", "0.0.0.0:0")
+	newConn, err := net.DialUDP("udp", localAddr, ranUDPAddr)
+	if err != nil {
+		return fmt.Errorf("dial new RAN: %w", err)
+	}
+	newConn.SetReadBuffer(2 * 1024 * 1024)
+	newConn.SetWriteBuffer(2 * 1024 * 1024)
+
+	// Send INIT to RAN-2 so it learns the UE's UDP address.
+	initialPacket := fmt.Sprintf("%s imsi-%s", UE_DATA_PLANE_INITIAL_PACKET, udp.imsi)
+	if _, err := newConn.Write([]byte(initialPacket)); err != nil {
+		newConn.Close()
+		return fmt.Errorf("send INIT to new RAN: %w", err)
+	}
+
+	// Atomically swap the connection.
+	udp.ranConnMu.Lock()
+	oldConn := udp.ranConn
+	udp.ranConn = newConn
+	udp.ranAddr = ranUDPAddr
+	udp.ranConnMu.Unlock()
+
+	// Closing old conn unblocks readFromRan which is blocked on Read().
+	if oldConn != nil {
+		oldConn.Close()
+	}
+
+	log.Printf("🔄 UE: Data plane reconnected to RAN at %s\n", newRanAddr)
+	return nil
 }
 
 // readFromTun reads packets from TUN interface
@@ -149,20 +193,22 @@ func (udp *UEDataPlane) readFromRan() {
 		default:
 		}
 
-		n, err := udp.ranConn.Read(buffer)
+		udp.ranConnMu.RLock()
+		conn := udp.ranConn
+		udp.ranConnMu.RUnlock()
+
+		n, err := conn.Read(buffer)
 		if err != nil {
 			if udp.ctx.Err() != nil {
-				return
+				return // normal shutdown
 			}
-			log.Printf("⚠️  UE: Error reading from RAN: %v\n", err)
+			// Connection was closed by Reconnect — loop to pick up the new one.
 			continue
 		}
 
 		// Make a copy of the data
 		data := make([]byte, n)
 		copy(data, buffer[:n])
-
-		// log.Printf("📥 UE: Received %d bytes from RAN\n", n)
 
 		// Queue for TUN write
 		udp.fromRanChan <- data
@@ -179,14 +225,13 @@ func (udp *UEDataPlane) forwardToRan() {
 			return
 		case packet := <-udp.fromTunChan:
 			// Send raw IP packet to RAN (no GTP encapsulation at UE side)
-			n, err := udp.ranConn.Write(packet)
-			if err != nil {
+			udp.ranConnMu.RLock()
+			conn := udp.ranConn
+			udp.ranConnMu.RUnlock()
+			_, err := conn.Write(packet)
+			if err != nil && udp.ctx.Err() == nil {
 				log.Printf("⚠️  UE: Error sending to RAN: %v\n", err)
-				continue
 			}
-			_ = n // Suppress unused warning
-
-			// log.Printf("📤 UE: Sent %d bytes to RAN\n", n)
 		}
 	}
 }
