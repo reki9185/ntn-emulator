@@ -2,6 +2,7 @@ package ntnlink
 
 import (
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -19,10 +20,11 @@ type Link struct {
 	delayUERan    time.Duration
 	delayRan5G    time.Duration
 	currentJitter time.Duration
+	dropProb      float64
 	mutex         sync.RWMutex
 
 	// JSON watcher for dynamic updates
-	watcher *JSONWatcher
+	player *TimelinePlayer
 
 	// Four dedicated schedulers, one per direction per hop:
 	// Uplink:   UE -[UE-RAN]-> RAN -[RAN-5G]-> UPF
@@ -33,47 +35,50 @@ type Link struct {
 	ueRanDownlinkScheduler *Scheduler // RAN -> UE (downlink leg 2)
 }
 
-// NewLink creates a new NTN link with dynamic delay from JSON file
-func NewLink(stateFilePath string, pollInterval time.Duration) (*Link, error) {
-	link := &Link{
-		delayUERan:    0, // Will be set from JSON file
-		delayRan5G:    0, // Will be set from JSON file
-		currentJitter: 0, // Will be set from JSON file
-	}
+// NewLink creates a new NTN link that replays events from a timeline JSON file.
+func NewLink(timelineFilePath string) (*Link, error) {
+	link := &Link{}
 
-	// Create JSON watcher
-	link.watcher = NewJSONWatcher(stateFilePath, pollInterval)
-
-	// Read initial state from JSON file immediately
-	initialState, err := link.watcher.readStateFile()
+	// Create timeline player
+	player, err := NewTimelinePlayer(timelineFilePath)
 	if err != nil {
-		log.Printf("⚠️  Warning: Failed to read initial NTN state from %s: %v", stateFilePath, err)
-		log.Printf("    Using zero delay until state file is available")
-	} else {
-		// Apply initial state
+		log.Printf("⚠️  Warning: Failed to load NTN timeline from %s: %v", timelineFilePath, err)
+		log.Printf("    Using zero delay and PDR=1.0 until timeline file is available")
+		player = &TimelinePlayer{
+			updateChan:   make(chan *NTNState, 10),
+			stopChan:     make(chan struct{}),
+			callbacks:    make([]StateUpdateCallback, 0),
+			currentState: &NTNState{PDR: 1.0},
+		}
+	}
+	link.player = player
+
+	// Apply initial state immediately
+	if initialState := player.GetCurrentState(); initialState != nil {
 		link.UpdateFromState(initialState)
-		log.Printf("Initial NTN state: Satellite=%s, UE-RAN=%.1fms, RAN-5G=%.1fms, Timestamp=%.1fs",
-			initialState.Satellite, initialState.DelayUERan, initialState.DelayRan5G, initialState.Timestamp)
+		log.Printf("Initial NTN state: Satellite=%s, UE-RAN=%.1fms, RAN-5G=%.1fms, PDR=%.3f",
+			initialState.Satellite, initialState.DelayUERan, initialState.DelayRan5G, initialState.PDR)
 	}
 
-	// Register callback to update delays when state changes
-	link.watcher.RegisterCallback(func(old, new *NTNState) {
+	// Register callback to update link state when timeline events fire
+	player.RegisterCallback(func(old, new *NTNState) {
 		link.UpdateFromState(new)
 	})
 
 	// Create four dedicated schedulers, one per direction per hop
-	link.ueRanUplinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkUERan})
-	link.ran5GUplinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkRan5G})
-	link.ran5GDownlinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkRan5G})
-	link.ueRanDownlinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkUERan})
+	lossModel := &linkLossModel{link: link}
+	link.ueRanUplinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkUERan}, lossModel)
+	link.ran5GUplinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkRan5G}, lossModel)
+	link.ran5GDownlinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkRan5G}, lossModel)
+	link.ueRanDownlinkScheduler = NewScheduler(&linkDelayModel{link: link, linkType: LinkUERan}, lossModel)
 
 	return link, nil
 }
 
-// Start starts the NTN link (watcher and schedulers)
+// Start starts the NTN link (timeline player and schedulers)
 func (l *Link) Start() error {
-	// Start JSON watcher
-	if err := l.watcher.Start(); err != nil {
+	// Start timeline player
+	if err := l.player.Start(); err != nil {
 		return err
 	}
 
@@ -91,8 +96,8 @@ func (l *Link) Start() error {
 
 // Stop stops the NTN link
 func (l *Link) Stop() {
-	if l.watcher != nil {
-		l.watcher.Stop()
+	if l.player != nil {
+		l.player.Stop()
 	}
 	if l.ueRanUplinkScheduler != nil {
 		l.ueRanUplinkScheduler.Stop()
@@ -144,9 +149,10 @@ func (l *Link) UpdateFromState(state *NTNState) {
 
 	l.delayUERan = time.Duration(state.DelayUERan) * time.Millisecond
 	l.delayRan5G = time.Duration(state.DelayRan5G) * time.Millisecond
+	l.dropProb = 1.0 - state.PDR
 
-	log.Printf("🛰️  NTN Link updated: UE-RAN=%.1fms, RAN-5G=%.1fms (Sat: %s)",
-		state.DelayUERan, state.DelayRan5G, state.Satellite)
+	log.Printf("🛰️  NTN Link updated: UE-RAN=%.1fms, RAN-5G=%.1fms, PDR=%.3f (Sat: %s)",
+		state.DelayUERan, state.DelayRan5G, state.PDR, state.Satellite)
 }
 
 // linkDelayModel is a DelayModel that reads from a Link
@@ -157,4 +163,24 @@ type linkDelayModel struct {
 
 func (d *linkDelayModel) GetDelay() time.Duration {
 	return d.link.GetDelay(d.linkType)
+}
+
+// linkLossModel is a LossModel that reads drop probability from a Link
+type linkLossModel struct {
+	link *Link
+	rng  *rand.Rand
+}
+
+func (m *linkLossModel) ShouldDrop() bool {
+	m.link.mutex.RLock()
+	p := m.link.dropProb
+	m.link.mutex.RUnlock()
+
+	if p <= 0 {
+		return false
+	}
+	if m.rng == nil {
+		m.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+	return m.rng.Float64() < p
 }

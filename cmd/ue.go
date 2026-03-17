@@ -170,23 +170,25 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// ── Satellite watcher: auto-switch data plane when ntn_state.json changes ──
+	// ── Satellite watcher: auto-switch data plane when timeline satellite changes ──
 	if ueCfg.UE.NTNStateFile != "" && len(ueCfg.UE.SatelliteRANMap) > 0 {
-		satWatcher := ntnlink.NewJSONWatcher(ueCfg.UE.NTNStateFile, 200*time.Millisecond)
-		if err := satWatcher.Start(); err != nil {
-			log.Printf("⚠️  [UE] Failed to start satellite watcher: %v\n", err)
+		satPlayer, err := ntnlink.NewTimelinePlayer(ueCfg.UE.NTNStateFile)
+		if err != nil {
+			log.Printf("⚠️  [UE] Failed to load NTN timeline: %v\n", err)
+		} else if err := satPlayer.Start(); err != nil {
+			log.Printf("⚠️  [UE] Failed to start satellite timeline player: %v\n", err)
 		} else {
-			defer satWatcher.Stop()
+			defer satPlayer.Stop()
 			// Record the satellite we started with so we only act on changes.
 			var currentSatellite string
-			if state := satWatcher.GetCurrentState(); state != nil {
+			if state := satPlayer.GetCurrentState(); state != nil {
 				currentSatellite = state.Satellite
 			}
-			log.Printf("✓ [UE] Satellite watcher started (current=%s, watching %s)\n",
+			log.Printf("✓ [UE] Satellite timeline player started (current=%s, watching %s)\n",
 				currentSatellite, ueCfg.UE.NTNStateFile)
 
 			go func() {
-				updateCh := satWatcher.GetUpdateChannel()
+				updateCh := satPlayer.GetUpdateChannel()
 				for state := range updateCh {
 					if state == nil || state.Satellite == currentSatellite {
 						continue

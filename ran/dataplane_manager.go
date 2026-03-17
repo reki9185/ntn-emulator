@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	dpMu     sync.Mutex
-	activeDP *ranlink.RANDataPlane
+	dpMu      sync.Mutex
+	activeDP  *ranlink.RANDataPlane
+	dpStopped = true
 )
 
 func RegisterDataPlane(dp *ranlink.RANDataPlane) {
@@ -20,14 +21,23 @@ func RegisterDataPlane(dp *ranlink.RANDataPlane) {
 		activeDP.Stop()
 	}
 	activeDP = dp
+	dpStopped = false
 }
 
 func StopDataPlane() {
 	dpMu.Lock()
 	defer dpMu.Unlock()
+
+	if dpStopped {
+		log.Println("⚠️  StopDataPlane() called but already stopped (ignored).")
+		return
+	}
+
 	if activeDP != nil {
 		activeDP.Stop()
 		activeDP = nil
-		log.Println("🔌 Data plane stopped globally.")
 	}
+
+	dpStopped = true
+	log.Println("🔌 Data plane stopped globally.")
 }

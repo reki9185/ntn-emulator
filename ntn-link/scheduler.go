@@ -50,6 +50,7 @@ type Scheduler struct {
 	queue      PacketQueue
 	mutex      sync.Mutex
 	delayModel DelayModel
+	lossModel  LossModel
 
 	// Notification channel for ready packets
 	readyChan chan []byte
@@ -58,10 +59,11 @@ type Scheduler struct {
 }
 
 // NewScheduler creates a new packet scheduler
-func NewScheduler(delayModel DelayModel) *Scheduler {
+func NewScheduler(delayModel DelayModel, lossModel LossModel) *Scheduler {
 	return &Scheduler{
 		queue:      make(PacketQueue, 0),
 		delayModel: delayModel,
+		lossModel:  lossModel,
 		readyChan:  make(chan []byte, 100),
 		stopChan:   make(chan struct{}),
 	}
@@ -84,6 +86,10 @@ func (s *Scheduler) Stop() {
 
 // Enqueue adds a packet to the scheduler
 func (s *Scheduler) Enqueue(data []byte) {
+	if s.lossModel != nil && s.lossModel.ShouldDrop() {
+		return // drop packet
+	}
+
 	delay := s.delayModel.GetDelay()
 	deliverAt := time.Now().Add(delay)
 

@@ -62,7 +62,7 @@ func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr strin
 	// Create NTN link if state file is provided
 	var ntnLink *ntnlink.Link
 	if ntnStateFile != "" {
-		ntnLink, err = ntnlink.NewLink(ntnStateFile, 100*time.Millisecond)
+		ntnLink, err = ntnlink.NewLink(ntnStateFile)
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("failed to create NTN link: %w", err)
@@ -258,6 +258,17 @@ func (rdp *RANDataPlane) receiveFromUPF() {
 		data := make([]byte, n)
 		copy(data, buffer[:n])
 
+		// Detect GTP End Marker (type 0xFE) — control signal from UPF indicating
+		// the old tunnel is being torn down after path switch.  Do not enqueue it
+		// in the NTN delay scheduler; log and discard so it is never forwarded to
+		// the UE or delivered a second time after an artificial delay.
+		if len(data) >= 8 && data[1] == 0xFE {
+			teid := binary.BigEndian.Uint32(data[4:8])
+			log.Printf("🏁 RAN<-UPF: GTP End Marker received (TEID=0x%08x, time=%s) — tunnel teardown, discarding\n",
+				teid, time.Now().Format("15:04:05.000"))
+			continue
+		}
+
 		// Apply NTN delay if enabled
 		if rdp.ntnLink != nil {
 			// Enqueue in RAN-5G downlink scheduler (UPF -> RAN leg)
@@ -330,10 +341,6 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 			hasSeq := (flags & 0x02) != 0
 			hasNPDU := (flags & 0x01) != 0
 			msgType := gtpPacket[1]
-			_ = msgType // Suppress unused warning
-
-			// log.Printf("🔍 RAN Downlink: GTP version=%d, flags=0x%02x, msgType=0x%02x, E=%v, S=%v, PN=%v, len=%d\n",
-			// 	version, flags, msgType, hasExtension, hasSeq, hasNPDU, len(gtpPacket))
 
 			if version != 1 {
 				log.Printf("⚠️  RAN: Unsupported GTP version %d\n", version)
@@ -342,7 +349,14 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 
 			// Extract TEID
 			teid := binary.BigEndian.Uint32(gtpPacket[4:8])
-			log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, len=%d)\n", teid, len(gtpPacket))
+			log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, msgType=0x%02x, len=%d)\n", teid, msgType, len(gtpPacket))
+
+			// Discard any End Marker (0xFE) that made it this far through the
+			// scheduler pipeline — it is a teardown signal, not user data.
+			if msgType == 0xFE {
+				log.Printf("🏁 RAN Downlink: GTP End Marker (TEID=0x%08x) reached pipeline — discarding, not forwarding to UE\n", teid)
+				continue
+			}
 
 			// Accept any TEID from UPF (free5GC UPF uses its own DL TEID independent of what gNB advertised)
 

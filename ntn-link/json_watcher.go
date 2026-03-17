@@ -13,14 +13,19 @@ import (
 type NTNState struct {
 	Timestamp  float64 `json:"timestamp"`
 	Satellite  string  `json:"satellite"`
-	DelayUERan float64 `json:"delay_ue_ran"` // UE to RAN delay in ms
-	DelayRan5G float64 `json:"delay_ran_5g"` // RAN to 5GC delay in ms
+	DelayUERan float64 `json:"delay_ue_ran"`    // UE to RAN delay in ms
+	DelayRan5G float64 `json:"delay_ran_5g"`    // RAN to 5GC delay in ms
+	PDR        float64 `json:"pdr"`             // Packet Delivery Ratio [0.0, 1.0]
+	Event      string  `json:"event,omitempty"` // Event type from timeline (e.g. "handover_start", "handover_end")
 }
 
 // StateUpdateCallback is called when NTN state changes
 type StateUpdateCallback func(oldState, newState *NTNState)
 
-// JSONWatcher monitors ntn_state.json and notifies on changes
+// JSONWatcher monitors ntn_state.json and notifies on changes.
+//
+// Deprecated: Use TimelinePlayer for deterministic, event-driven simulation.
+// JSONWatcher remains for backward compatibility only.
 type JSONWatcher struct {
 	filePath     string
 	pollInterval time.Duration
@@ -40,7 +45,9 @@ type JSONWatcher struct {
 	wg       sync.WaitGroup
 }
 
-// NewJSONWatcher creates a new NTN state file watcher
+// NewJSONWatcher creates a new NTN state file watcher.
+//
+// Deprecated: Use NewTimelinePlayer instead.
 func NewJSONWatcher(filePath string, pollInterval time.Duration) *JSONWatcher {
 	return &JSONWatcher{
 		filePath:     filePath,
@@ -176,6 +183,11 @@ func (w *JSONWatcher) hasStateChanged(old, new *NTNState) bool {
 	}
 
 	if absFloat(old.DelayRan5G-new.DelayRan5G) > 0.5 {
+		return true
+	}
+
+	// Check for PDR change
+	if absFloat(old.PDR-new.PDR) > 0.001 {
 		return true
 	}
 

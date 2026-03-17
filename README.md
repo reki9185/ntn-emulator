@@ -37,6 +37,7 @@ cd /home/ntn/ntn-emulator
 
 go mod tidy
 go mod download
+go build ./ntn-link/... && go build ./ran/... && go build ./ue/...
 
 # Build RAN executable
 go build -o /tmp/ntn_ran ./cmd/ran.go
