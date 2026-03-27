@@ -25,9 +25,10 @@ type TimelineEvent struct {
 // TimelinePlayer loads a precomputed event trace and replays it against an
 // internal clock, calling registered callbacks exactly as JSONWatcher did.
 type TimelinePlayer struct {
-	events    []TimelineEvent
-	startTime time.Time
-	index     int
+	events       []TimelineEvent
+	startTime    time.Time     // Absolute time when timeline t=0 begins
+	scheduledAt  *time.Time    // Optional: scheduled absolute start time
+	index        int
 
 	currentState  *NTNState
 	stateMutex    sync.RWMutex
@@ -110,13 +111,45 @@ func (p *TimelinePlayer) GetCurrentState() *NTNState {
 	return &cp
 }
 
-// Start begins the event replay loop.  T=0 is set to the moment Start() is
-// called; all event times are relative to this instant.
+// SetScheduledStartTime sets an absolute time when the timeline should begin.
+// If set, Start() will wait until this time before beginning event replay.
+// This enables multiple processes to synchronize their timelines to a common t=0.
+func (p *TimelinePlayer) SetScheduledStartTime(t time.Time) {
+	p.scheduledAt = &t
+}
+
+// Start begins the event replay loop.  T=0 is set to either:
+//   - The scheduled start time (if SetScheduledStartTime was called), or
+//   - The moment Start() is called (default behavior, backward compatible)
+// All event times in the timeline are relative to this t=0 instant.
 func (p *TimelinePlayer) Start() error {
-	p.startTime = time.Now()
+	if p.scheduledAt != nil {
+		now := time.Now()
+		if now.Before(*p.scheduledAt) {
+			waitDuration := p.scheduledAt.Sub(now)
+			log.Printf("⏱️  [Timeline] Waiting %.3fs until scheduled start at %s",
+				waitDuration.Seconds(), p.scheduledAt.Format("15:04:05.000"))
+			time.Sleep(waitDuration)
+		} else if now.After(p.scheduledAt.Add(5 * time.Second)) {
+			// Warn if we're significantly late (>5s), but still proceed
+			late := now.Sub(*p.scheduledAt)
+			log.Printf("⚠️  [Timeline] Starting %.3fs late (scheduled: %s, now: %s)",
+				late.Seconds(), p.scheduledAt.Format("15:04:05.000"), now.Format("15:04:05.000"))
+		}
+		p.startTime = *p.scheduledAt
+	} else {
+		p.startTime = time.Now()
+	}
+	
 	p.index = 0
 	p.wg.Add(1)
 	go p.replayLoop()
+	
+	log.Printf("▶️  [Timeline] Started at t=0: %s (UNIX: %d.%06d)",
+		p.startTime.Format("15:04:05.000000"),
+		p.startTime.Unix(),
+		p.startTime.Nanosecond()/1000)
+	
 	return nil
 }
 
@@ -150,7 +183,10 @@ func (p *TimelinePlayer) replayLoop() {
 }
 
 func (p *TimelinePlayer) checkAndApplyEvents() {
-	elapsed := time.Since(p.startTime).Seconds()
+	// Calculate elapsed time since t=0 (startTime), using absolute time comparison
+	now := time.Now()
+	elapsed := now.Sub(p.startTime).Seconds()
+	
 	for p.index < len(p.events) && p.events[p.index].Time <= elapsed {
 		event := p.events[p.index]
 		p.index++
@@ -179,7 +215,9 @@ func (p *TimelinePlayer) applyEvent(event TimelineEvent) {
 	case "handover_start":
 		// Full packet loss during handover interruption.
 		next.PDR = 0.0
-		log.Printf("🔄 [Timeline] t=%.3fs handover_start — PDR=0.0 (full loss)", event.Time)
+		absTime := p.startTime.Add(time.Duration(event.Time * float64(time.Second)))
+		log.Printf("🔄 [Timeline] t=%.3fs (abs: %s) handover_start — PDR=0.0 (full loss)", 
+			event.Time, absTime.Format("15:04:05.000"))
 
 	case "handover_end":
 		if event.Satellite != "" {
@@ -194,8 +232,9 @@ func (p *TimelinePlayer) applyEvent(event TimelineEvent) {
 		if event.PDR != 0 {
 			next.PDR = event.PDR
 		}
-		log.Printf("✅ [Timeline] t=%.3fs handover_end — satellite=%s UE-RAN=%.1fms RAN-5G=%.1fms PDR=%.3f",
-			event.Time, next.Satellite, next.DelayUERan, next.DelayRan5G, next.PDR)
+		absTime := p.startTime.Add(time.Duration(event.Time * float64(time.Second)))
+		log.Printf("✅ [Timeline] t=%.3fs (abs: %s) handover_end — satellite=%s UE-RAN=%.1fms RAN-5G=%.1fms PDR=%.3f",
+			event.Time, absTime.Format("15:04:05.000"), next.Satellite, next.DelayUERan, next.DelayRan5G, next.PDR)
 
 	default:
 		// Regular state-update event.
@@ -211,8 +250,9 @@ func (p *TimelinePlayer) applyEvent(event TimelineEvent) {
 		if event.PDR != 0 {
 			next.PDR = event.PDR
 		}
-		log.Printf("📡 [Timeline] t=%.3fs state update — satellite=%s UE-RAN=%.1fms RAN-5G=%.1fms PDR=%.3f",
-			event.Time, next.Satellite, next.DelayUERan, next.DelayRan5G, next.PDR)
+		absTime := p.startTime.Add(time.Duration(event.Time * float64(time.Second)))
+		log.Printf("📡 [Timeline] t=%.3fs (abs: %s) state update — satellite=%s UE-RAN=%.1fms RAN-5G=%.1fms PDR=%.3f",
+			event.Time, absTime.Format("15:04:05.000"), next.Satellite, next.DelayUERan, next.DelayRan5G, next.PDR)
 	}
 
 	p.currentState = &next

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,13 +22,28 @@ import (
 )
 
 func main() {
+	// Configure log format with microsecond precision
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+
 	// Parse command-line arguments
 	configPath := flag.String("config", "configs/ue.yaml", "Path to UE config file")
 	ueIP := flag.String("ue-ip", "", "UE IP address (from PDU session, overrides config)")
 	ranAddr := flag.String("ran-addr", "", "RAN data plane address (overrides config)")
 	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
 	tunName := flag.String("tun", "", "TUN interface name (overrides config)")
+	startTimeStr := flag.String("start-time", "", "Timeline start time (UNIX timestamp or 'now+10s'). Default: start immediately")
 	flag.Parse()
+
+	// Parse scheduled start time if provided
+	var scheduledStartTime *time.Time
+	if *startTimeStr != "" {
+		t, err := parseStartTime(*startTimeStr)
+		if err != nil {
+			log.Fatalf("Invalid -start-time format: %v", err)
+		}
+		scheduledStartTime = &t
+		log.Printf("⏱️  Scheduled timeline start: %s (UNIX: %d)", t.Format("2006-01-02 15:04:05.000"), t.Unix())
+	}
 
 	// Load UE configuration
 	ueCfg, err := config.LoadUEConfig(*configPath)
@@ -175,44 +191,50 @@ func main() {
 		satPlayer, err := ntnlink.NewTimelinePlayer(ueCfg.UE.NTNStateFile)
 		if err != nil {
 			log.Printf("⚠️  [UE] Failed to load NTN timeline: %v\n", err)
-		} else if err := satPlayer.Start(); err != nil {
-			log.Printf("⚠️  [UE] Failed to start satellite timeline player: %v\n", err)
 		} else {
-			defer satPlayer.Stop()
-			// Record the satellite we started with so we only act on changes.
-			var currentSatellite string
-			if state := satPlayer.GetCurrentState(); state != nil {
-				currentSatellite = state.Satellite
+			// Set scheduled start time if provided (for synchronized timeline replay)
+			if scheduledStartTime != nil {
+				satPlayer.SetScheduledStartTime(*scheduledStartTime)
 			}
-			log.Printf("✓ [UE] Satellite timeline player started (current=%s, watching %s)\n",
-				currentSatellite, ueCfg.UE.NTNStateFile)
 
-			go func() {
-				updateCh := satPlayer.GetUpdateChannel()
-				for state := range updateCh {
-					if state == nil || state.Satellite == currentSatellite {
-						continue
-					}
-					newSat := state.Satellite
-					entry, ok := ueCfg.UE.SatelliteRANMap[newSat]
-					if !ok {
-						log.Printf("⚠️  [UE] No RAN mapping for satellite %s — ignoring\n", newSat)
-						currentSatellite = newSat
-						continue
-					}
-					newAddr := fmt.Sprintf("%s:%d", entry.DataPlaneIP, entry.DataPlanePort)
-					log.Printf("🛰️  [UE] Satellite changed: %s → %s\n", currentSatellite, newSat)
-					log.Printf("   Switching data plane to %s in 1s (allowing path switch to complete)\n", newAddr)
-					currentSatellite = newSat
-					// Wait for RAN-2 path switch to complete before reconnecting.
-					time.Sleep(1 * time.Second)
-					if err := ueDataPlane.Reconnect(newAddr); err != nil {
-						log.Printf("❌ [UE] Data plane reconnect failed: %v\n", err)
-					} else {
-						log.Printf("✅ [UE] Data plane switched to %s (satellite %s)\n", newAddr, newSat)
-					}
+			if err := satPlayer.Start(); err != nil {
+				log.Printf("⚠️  [UE] Failed to start satellite timeline player: %v\n", err)
+			} else {
+				defer satPlayer.Stop()
+				// Record the satellite we started with so we only act on changes.
+				var currentSatellite string
+				if state := satPlayer.GetCurrentState(); state != nil {
+					currentSatellite = state.Satellite
 				}
-			}()
+				log.Printf("✓ [UE] Satellite timeline player started (current=%s, watching %s)\n",
+					currentSatellite, ueCfg.UE.NTNStateFile)
+
+				go func() {
+					updateCh := satPlayer.GetUpdateChannel()
+					for state := range updateCh {
+						if state == nil || state.Satellite == currentSatellite {
+							continue
+						}
+						newSat := state.Satellite
+						entry, ok := ueCfg.UE.SatelliteRANMap[newSat]
+						if !ok {
+							log.Printf("⚠️  [UE] No RAN mapping for satellite %s — ignoring\n", newSat)
+							currentSatellite = newSat
+							continue
+						}
+						newAddr := fmt.Sprintf("%s:%d", entry.DataPlaneIP, entry.DataPlanePort)
+						log.Printf("🛰️  [UE] Satellite changed: %s → %s\n", currentSatellite, newSat)
+						log.Printf("   Switching data plane to %s (allowing path switch to complete)\n", newAddr)
+						currentSatellite = newSat
+						// Removed artificial delay - reconnect immediately for faster handover
+						if err := ueDataPlane.Reconnect(newAddr); err != nil {
+							log.Printf("❌ [UE] Data plane reconnect failed: %v\n", err)
+						} else {
+							log.Printf("✅ [UE] Data plane switched to %s (satellite %s)\n", newAddr, newSat)
+						}
+					}
+				}()
+			}
 		}
 	}
 
@@ -231,4 +253,32 @@ func main() {
 	}
 
 	log.Println("✓ UE shutdown completed")
+}
+
+// parseStartTime parses a start time string in the following formats:
+//   - UNIX timestamp (integer seconds): "1648000000"
+//   - UNIX timestamp with fractional seconds: "1648000000.123456"
+//   - Relative time from now: "now+10s", "now+5m", "now+1h"
+func parseStartTime(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+
+	// Handle "now+duration" format
+	if strings.HasPrefix(s, "now+") || strings.HasPrefix(s, "now-") {
+		durationStr := s[3:] // Skip "now"
+		duration, err := time.ParseDuration(durationStr)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid duration in '%s': %w", s, err)
+		}
+		return time.Now().Add(duration), nil
+	}
+
+	// Handle UNIX timestamp (with optional fractional seconds)
+	var timestamp float64
+	if _, err := fmt.Sscanf(s, "%f", &timestamp); err != nil {
+		return time.Time{}, fmt.Errorf("expected UNIX timestamp or 'now+duration', got '%s'", s)
+	}
+
+	sec := int64(timestamp)
+	nsec := int64((timestamp - float64(sec)) * 1e9)
+	return time.Unix(sec, nsec), nil
 }

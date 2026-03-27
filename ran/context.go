@@ -102,14 +102,14 @@ func (s *XnServer) handleConn(conn net.Conn) {
 // called immediately after the satellite switch even if RAN-1 hasn't stored the
 // context yet.
 func FetchContextFromXn(xnPeerAddr string) (*UEHandoverContext, error) {
-	const maxRetries = 10
+	const maxRetries = 3
 	for i := 0; i < maxRetries; i++ {
 		ctx, err := tryFetchContext(xnPeerAddr)
 		if err == nil {
 			return ctx, nil
 		}
-		log.Printf("⚠️  [Xn] Context not ready, retrying in 500ms (%v)\n", err)
-		time.Sleep(500 * time.Millisecond)
+		log.Printf("⚠️  [Xn] Context not ready, retrying in 100ms (%v)\n", err)
+		time.Sleep(10 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("xn peer %s: context unavailable after %d retries", xnPeerAddr, maxRetries)
 }

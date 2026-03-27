@@ -15,15 +15,15 @@
     "time": 25.0,
     "event": "handover_end",
     "satellite": "STARLINK-181",
-    "delay_ue_ran": 0.0,
-    "delay_ran_5g": 0.0,
+    "delay_ue_ran": 3.0,
+    "delay_ran_5g": 5.0,
     "pdr": 1.0
   },
   {
-    "time": 26.0,
+    "time": 30.0,
     "satellite": "STARLINK-181",
-    "delay_ue_ran": 0.0,
-    "delay_ran_5g": 0.0,
+    "delay_ue_ran": 3.0,
+    "delay_ran_5g": 5.0,
     "pdr": 1.0
   }
 ]

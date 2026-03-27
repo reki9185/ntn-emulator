@@ -34,7 +34,10 @@ const (
 //
 // When the satellite changes away, it becomes STANDBY:
 //  1. Stops its data plane.
-func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig, xnSrv *XnServer, xnPeerAddr string) {
+//
+// If scheduledStartTime is provided, the timeline will wait until that absolute
+// time before beginning event replay (for synchronization with other processes).
+func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig, xnSrv *XnServer, xnPeerAddr string, scheduledStartTime *time.Time) {
 	log.Printf("🛰️  [Controller] Watching %s for satellite=%s\n", ranCfg.GNB.NTNStateFile, ranCfg.GNB.GNBName)
 
 	player, err := ntnlink.NewTimelinePlayer(ranCfg.GNB.NTNStateFile)
@@ -42,6 +45,12 @@ func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig
 		log.Printf("❌ load NTN timeline: %v\n", err)
 		return
 	}
+
+	// Set scheduled start time if provided (for synchronized timeline replay)
+	if scheduledStartTime != nil {
+		player.SetScheduledStartTime(*scheduledStartTime)
+	}
+
 	if err := player.Start(); err != nil {
 		log.Printf("❌ start NTN timeline player: %v\n", err)
 		return
@@ -62,7 +71,7 @@ func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig
 		if state.Event == "handover_start" {
 			log.Println("🚨 [Controller] Handover START detected — freezing old data plane")
 
-			// StopDataPlane()
+			StopDataPlane()
 			continue
 		}
 
@@ -185,7 +194,7 @@ func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig
 		} else if !shouldBeActive && hoState == HOActive {
 			log.Println("⏸️  [Controller] Satellite lost. Entering standby mode.")
 			hoState = HOIdle
-			StopDataPlane()
+			// StopDataPlane()
 		}
 	}
 }

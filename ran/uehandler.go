@@ -281,7 +281,7 @@ func (h *UEHandler) HandleRegistration() error {
 	if err := dataPlane.Start(); err != nil {
 		return fmt.Errorf("failed to start data plane: %w", err)
 	}
-	
+
 	RegisterDataPlane(dataPlane)
 	defer StopDataPlane()
 

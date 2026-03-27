@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
 
 	"ntn-emulator/config"
 	"ntn-emulator/ran"
@@ -22,6 +24,9 @@ import (
 )
 
 func main() {
+	// Configure log format with microsecond precision
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+
 	// Parse command-line arguments
 	configPath := flag.String("config", "configs/ran.yaml", "Path to RAN config file")
 	imsi := flag.String("imsi", "", "UE IMSI (overrides config)")
@@ -32,7 +37,20 @@ func main() {
 	// -xn-peer: RAN-2 connects to this address to fetch UE context from RAN-1
 	// when the satellite in ntn_state.json matches this RAN's gnbName.
 	xnPeer := flag.String("xn-peer", "", "TCP address of RAN-1 Xn context server, e.g. 127.0.0.1:9001 (target RAN only)")
+	// -start-time: Synchronize timeline start to an absolute UNIX timestamp or "now+Ns" format
+	startTimeStr := flag.String("start-time", "", "Timeline start time (UNIX timestamp or 'now+10s'). Default: start immediately")
 	flag.Parse()
+	
+	// Parse scheduled start time if provided
+	var scheduledStartTime *time.Time
+	if *startTimeStr != "" {
+		t, err := parseStartTime(*startTimeStr)
+		if err != nil {
+			log.Fatalf("Invalid -start-time format: %v", err)
+		}
+		scheduledStartTime = &t
+		log.Printf("⏱️  Scheduled timeline start: %s (UNIX: %d)", t.Format("2006-01-02 15:04:05.000"), t.Unix())
+	}
 
 	// Load RAN configuration
 	ranCfg, err := config.LoadRANConfig(*configPath)
@@ -159,7 +177,7 @@ func main() {
 	// Start continuous Handover Controller in the background
 	if *xnPeer != "" {
 		log.Printf("\n🛰️  Continuous Handover mode enabled (xn-peer=%s)\n", *xnPeer)
-		go ran.RunHandoverController(ngapClient, ranCfg, xnSrv, *xnPeer)
+		go ran.RunHandoverController(ngapClient, ranCfg, xnSrv, *xnPeer, scheduledStartTime)
 	} else {
 		log.Printf("\n🛰️  No -xn-peer provided. Handover controller disabled. (Source-only mode)\n")
 	}
@@ -237,6 +255,34 @@ func main() {
 	log.Println("\n========================================")
 	log.Println("✓ RAN shutdown completed gracefully")
 	log.Println("========================================")
+}
+
+// parseStartTime parses a start time string in the following formats:
+//   - UNIX timestamp (integer seconds): "1648000000"
+//   - UNIX timestamp with fractional seconds: "1648000000.123456"
+//   - Relative time from now: "now+10s", "now+5m", "now+1h"
+func parseStartTime(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	
+	// Handle "now+duration" format
+	if strings.HasPrefix(s, "now+") || strings.HasPrefix(s, "now-") {
+		durationStr := s[3:] // Skip "now"
+		duration, err := time.ParseDuration(durationStr)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid duration in '%s': %w", s, err)
+		}
+		return time.Now().Add(duration), nil
+	}
+	
+	// Handle UNIX timestamp (with optional fractional seconds)
+	var timestamp float64
+	if _, err := fmt.Sscanf(s, "%f", &timestamp); err != nil {
+		return time.Time{}, fmt.Errorf("expected UNIX timestamp or 'now+duration', got '%s'", s)
+	}
+	
+	sec := int64(timestamp)
+	nsec := int64((timestamp - float64(sec)) * 1e9)
+	return time.Unix(sec, nsec), nil
 }
 
 // insertUEDataToMongoDB inserts UE subscription data to MongoDB

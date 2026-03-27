@@ -40,16 +40,10 @@ go mod download
 go build ./ntn-link/... && go build ./ran/... && go build ./ue/...
 
 # Build RAN executable
-go build -o /tmp/ntn_ran ./cmd/ran.go
+go build -o bin/ntn_ran ./cmd/ran.go
 
 # Build UE executable  
-go build -o /tmp/ntn_ue ./cmd/ue.go
-```
-
-### Test
-
-```bash
-go run test_watcher.go
+go build -o bin/ntn_ue ./cmd/ue.go
 ```
 
 ### Run
@@ -120,14 +114,14 @@ cd .. && make amf
 
 ```bash
 # Start ran
-sudo ip netns exec ran_ns /tmp/ntn_ran -imsi imsi-208930000000001
+sudo ip netns exec ran_ns bin/ntn_ran -imsi imsi-208930000000001
 # Or you can execute with reading configs/ran.yaml
-sudo ip netns exec ran_ns /tmp/ntn_ran
+sudo ip netns exec ran_ns bin/ntn_ran
 
 # Start UE in another terminal
-sudo ip netns exec ue_ns /tmp/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
+sudo ip netns exec ue_ns bin/ntn_ue -ue-ip 10.60.0.1 -ran-addr 10.0.2.1:31414 -imsi 208930000000001
 # Or you can execute with reading configs/ue.yaml
-sudo ip netns exec ue_ns /tmp/ntn_ue
+sudo ip netns exec ue_ns bin/ntn_ue
 
 ```
 
@@ -147,22 +141,40 @@ sudo ./setup_multi_ran.sh up
 
 ```bash
 # Terminal 1: Start RAN-1 (STARLINK-180)
-sudo ip netns exec ran_ns /tmp/ntn_ran \
+sudo ip netns exec ran_ns bin/ntn_ran \
   -config configs/ran.yaml \
   -xn-listen 10.0.1.2:9001 -xn-peer 10.0.1.3:9002
 
 # Terminal 2: Start RAN-2 (STARLINK-181)
-sudo ip netns exec ran_ns /tmp/ntn_ran \
+sudo ip netns exec ran_ns bin/ntn_ran \
   -config configs/ran_2.yaml \
   -xn-listen 10.0.1.3:9002 -xn-peer 10.0.1.2:9001
 
 # Terminal 3: Start UE
-sudo ip netns exec ue_ns /tmp/ntn_ue -config configs/ue.yaml
+sudo ip netns exec ue_ns bin/ntn_ue -config configs/ue.yaml
 
 # Terminal 4: Ping continually
 sudo ip netns exec ue_ns ping -I ueTun0 8.8.8.8
 ```
 
+8. iperf3
+
+Server
+
+```bash
+sudo ip link add veth-upf type veth peer name veth-peer
+sudo ip addr add 10.0.1.24/24 dev veth-upf
+sudo ip link set veth-upf up
+iperf3 -s -B 10.0.1.24
+```
+
+Client
+
+```bash
+sudo ip netns exec ue_ns bash
+sudo ip route add 10.0.1.0/24 dev ueTun0
+sudo iperf3 -c 10.0.1.24 -B 10.60.0.1 -u -b 5M -t 30 -i 0.1 --forceflush | ts '%H:%M:%.S'
+```
 
 ### Clean
 
