@@ -31,7 +31,7 @@ gnb:
     sst: "1" # Slice/Service Type
     sd: "010203" # Slice Differentiator
 
-  ntnStateFile: "/home/ntn/ntn-emulator/ntn_state.json" # NTN state file for dynamic delay
+  ntnStateFile: "/home/ntn/ntn-emulator/tn_timeline.json" # NTN state file for dynamic delay
 
 logger:
   level: "info" # error, warn, info, debug, trace, test

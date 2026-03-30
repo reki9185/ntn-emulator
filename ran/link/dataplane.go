@@ -297,7 +297,7 @@ func (rdp *RANDataPlane) forwardUplinkToUPF() {
 			binary.BigEndian.PutUint32(gtpHeader[4:8], rdp.ulTEID)            // TEID
 			// Sequence number fields [8:12] = 0x00000000
 
-			log.Printf("📤 RAN->UPF: Sending GTP-U packet (TEID=%d, payload=%d bytes, dest=%s)\n", rdp.ulTEID, len(packet), rdp.upfAddr.String())
+			// log.Printf("📤 RAN->UPF: Sending GTP-U packet (TEID=%d, payload=%d bytes, dest=%s)\n", rdp.ulTEID, len(packet), rdp.upfAddr.String())
 
 			// Combine header + payload
 			gtpPacket := append(gtpHeader, packet...)
@@ -349,7 +349,7 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 
 			// Extract TEID
 			teid := binary.BigEndian.Uint32(gtpPacket[4:8])
-			log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, msgType=0x%02x, len=%d)\n", teid, msgType, len(gtpPacket))
+			// log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, msgType=0x%02x, len=%d)\n", teid, msgType, len(gtpPacket))
 
 			// Discard any End Marker (0xFE) that made it this far through the
 			// scheduler pipeline — it is a teardown signal, not user data.

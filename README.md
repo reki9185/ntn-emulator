@@ -131,7 +131,23 @@ sudo ip netns exec ue_ns bin/ntn_ue
 sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
 ```
 
-7. Test handover
+7a. Test Single-RAN Mode (Dynamic Link Parameters)
+
+Single-RAN mode allows channel characteristics (delay, PDR) to change over time without handovers.
+
+```bash
+# Start RAN with single-RAN mode enabled
+# Make Sure to change the config file in the ran.yaml and ue.yaml
+sudo ip netns exec ran_ns bin/ntn_ran -config configs/ran.yaml -single-ran
+
+# Start UE in another terminal
+sudo ip netns exec ue_ns bin/ntn_ue -config configs/ue.yaml
+
+# Test connectivity and observe delay changes
+sudo ip netns exec ue_ns ping -I ueTun0 8.8.8.8
+```
+
+7b. Test Multi-RAN Handover Mode
 
 Setup multi-ran namespace and start free5GC.
 

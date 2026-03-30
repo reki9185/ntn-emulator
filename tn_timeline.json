@@ -1,0 +1,59 @@
+[
+  {
+    "time": 0.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+
+  {
+    "time": 20.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+  {
+    "time": 100.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+  {
+    "time": 200.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+  {
+    "time": 300.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+  {
+    "time": 400.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+  {
+    "time": 500.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  },
+  {
+    "time": 600.0,
+    "satellite": "TN-LINK",
+    "delay_ue_ran": 0,
+    "delay_ran_5g": 0,
+    "pdr": 1.0
+  }
+]

@@ -118,7 +118,7 @@ func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig
 
 			// ── Send PathSwitchRequest ───────────────────────────────────────
 			psHandler := ngap.NewPathSwitchHandler(ngapClient)
-			log.Printf("📤 [Path Switch] Sending PathSwitchRequest (TEID=%d, time=%s)\n", newDLTEID, nowStr())
+			// log.Printf("📤 [Path Switch] Sending PathSwitchRequest (TEID=%d, time=%s)\n", newDLTEID, nowStr())
 			err = psHandler.SendPathSwitchRequest(ueCtx.AmfUeNgapID, newRanUeNgapID, ueCtx.PDUSessionID, ranCfg.GNB.RANN3IP, newDLTEID, plmnID, nrCellID, tac.Value)
 			if err != nil {
 				log.Printf("❌ send PathSwitchRequest: %v\n", err)
@@ -197,6 +197,73 @@ func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig
 			// StopDataPlane()
 		}
 	}
+}
+
+// RunSingleRANModeController monitors the NTN timeline and applies link parameter
+// changes (delay, PDR) to a single RAN without performing handovers. This mode is
+// intended for scenarios where the satellite/channel characteristics change over time,
+// but the UE remains connected to a single RAN throughout the simulation.
+//
+// Unlike RunHandoverController, this mode:
+//   - Ignores the "satellite" field in timeline events
+//   - Does not perform path switches or Xn context transfers
+//   - Only updates link parameters (delays, PDR) based on timeline events
+//
+// If scheduledStartTime is provided, the timeline will wait until that absolute
+// time before beginning event replay (for synchronization with other processes).
+func RunSingleRANModeController(ranCfg *config.RANConfig, scheduledStartTime *time.Time) {
+	log.Printf("🛰️  [Single-RAN Mode] Starting controller for %s\n", ranCfg.GNB.NTNStateFile)
+	log.Println("📡 [Single-RAN Mode] Link parameters will change dynamically, no handovers")
+
+	player, err := ntnlink.NewTimelinePlayer(ranCfg.GNB.NTNStateFile)
+	if err != nil {
+		log.Printf("❌ load NTN timeline: %v\n", err)
+		return
+	}
+
+	// Set scheduled start time if provided (for synchronized timeline replay)
+	if scheduledStartTime != nil {
+		player.SetScheduledStartTime(*scheduledStartTime)
+		log.Printf("⏱️  [Single-RAN Mode] Scheduled start: %s\n", scheduledStartTime.Format("15:04:05.000"))
+	}
+
+	if err := player.Start(); err != nil {
+		log.Printf("❌ start NTN timeline player: %v\n", err)
+		return
+	}
+	defer player.Stop()
+
+	log.Println("✅ [Single-RAN Mode] Timeline player started")
+
+	// Initial state logging
+	if state := player.GetCurrentState(); state != nil {
+		log.Printf("📊 [Single-RAN Mode] Initial state: UE-RAN=%.3fms, RAN-5G=%.3fms, PDR=%.3f\n",
+			state.DelayUERan, state.DelayRan5G, state.PDR)
+	}
+
+	// Monitor timeline events and log link parameter changes
+	// The actual parameter updates happen automatically via callbacks registered
+	// in ran/link/dataplane.go → ntnlink.Link.UpdateFromState()
+	for state := range player.GetUpdateChannel() {
+		if state == nil {
+			continue
+		}
+
+		// Log significant link parameter changes
+		log.Printf("📡 [Link Update] t=%.3fs: UE-RAN=%.3fms, RAN-5G=%.3fms, PDR=%.3f (%.1f%% success)\n",
+			state.Timestamp,
+			state.DelayUERan,
+			state.DelayRan5G,
+			state.PDR,
+			state.PDR*100.0)
+
+		// Note: In single-RAN mode, we ignore special handover events
+		if state.Event == "handover_start" || state.Event == "handover_end" {
+			log.Printf("⚠️  [Single-RAN Mode] Ignoring handover event '%s' in single-RAN mode\n", state.Event)
+		}
+	}
+
+	log.Println("🛑 [Single-RAN Mode] Controller stopped")
 }
 
 // nowStr returns a short wall-clock timestamp string for debug logging.

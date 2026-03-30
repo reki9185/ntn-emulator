@@ -46,7 +46,7 @@ ue:
   ignoreSetupTunnel: false # Ignore Setup Tunnel
 
   # NTN state file — watched by UE to detect satellite changes and trigger handover
-  ntnStateFile: "/home/ntn/ntn-emulator/ntn_state.json"
+  ntnStateFile: "/home/ntn/ntn-emulator/tn_timeline.json"
 
   # Map each satellite name to the RAN data plane endpoint the UE should switch to
   satelliteRanMap:

@@ -1,0 +1,429 @@
+[
+  {
+    "time": 0.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 0.0,
+    "delay_ran_5g": 0.0,
+    "pdr": 1.0
+  },
+  {
+    "time": 20.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.3175,
+    "delay_ran_5g": 4.3175,
+    "pdr": 0.6358039999999999
+  },
+  {
+    "time": 30.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.129,
+    "delay_ran_5g": 4.129,
+    "pdr": 0.7183069999999999
+  },
+  {
+    "time": 40.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.9464,
+    "delay_ran_5g": 3.9464,
+    "pdr": 0.79915
+  },
+  {
+    "time": 50.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.7704,
+    "delay_ran_5g": 3.7704,
+    "pdr": 0.6324580000000001
+  },
+  {
+    "time": 60.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.6021,
+    "delay_ran_5g": 3.6021,
+    "pdr": 0.8998
+  },
+  {
+    "time": 70.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.4427,
+    "delay_ran_5g": 3.4427,
+    "pdr": 0.8290909999999999
+  },
+  {
+    "time": 80.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.2892,
+    "delay_ran_5g": 3.2892,
+    "pdr": 0.8998
+  },
+  {
+    "time": 90.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.1418,
+    "delay_ran_5g": 3.1418,
+    "pdr": 0.7998000000000001
+  },
+  {
+    "time": 100.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.0066,
+    "delay_ran_5g": 3.0066,
+    "pdr": 0.9997
+  },
+  {
+    "time": 110.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.8855,
+    "delay_ran_5g": 2.8855,
+    "pdr": 0.981308
+  },
+  {
+    "time": 120.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.7803,
+    "delay_ran_5g": 2.7803,
+    "pdr": 1.0
+  },
+  {
+    "time": 130.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.6928,
+    "delay_ran_5g": 2.6928,
+    "pdr": 0.9998
+  },
+  {
+    "time": 140.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.6201,
+    "delay_ran_5g": 2.6201,
+    "pdr": 0.89985
+  },
+  {
+    "time": 150.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.5625,
+    "delay_ran_5g": 2.5625,
+    "pdr": 0.89985
+  },
+  {
+    "time": 160.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.527,
+    "delay_ran_5g": 2.527,
+    "pdr": 1.0
+  },
+  {
+    "time": 170.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.5145,
+    "delay_ran_5g": 2.5145,
+    "pdr": 0.897829
+  },
+  {
+    "time": 180.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.5254,
+    "delay_ran_5g": 2.5254,
+    "pdr": 0.89985
+  },
+  {
+    "time": 190.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.5593,
+    "delay_ran_5g": 2.5593,
+    "pdr": 1.0
+  },
+  {
+    "time": 200.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.6102,
+    "delay_ran_5g": 2.6102,
+    "pdr": 1.0
+  },
+  {
+    "time": 210.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.6759,
+    "delay_ran_5g": 2.6759,
+    "pdr": 0.999398
+  },
+  {
+    "time": 220.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.7613,
+    "delay_ran_5g": 2.7613,
+    "pdr": 0.79995
+  },
+  {
+    "time": 230.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.8646,
+    "delay_ran_5g": 2.8646,
+    "pdr": 0.89985
+  },
+  {
+    "time": 240.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 2.984,
+    "delay_ran_5g": 2.984,
+    "pdr": 0.9995489999999999
+  },
+  {
+    "time": 250.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.1177,
+    "delay_ran_5g": 3.1177,
+    "pdr": 0.897427
+  },
+  {
+    "time": 260.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.26,
+    "delay_ran_5g": 3.26,
+    "pdr": 0.889473
+  },
+  {
+    "time": 270.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.4089,
+    "delay_ran_5g": 3.4089,
+    "pdr": 0.5949369999999999
+  },
+  {
+    "time": 280.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.5681,
+    "delay_ran_5g": 3.5681,
+    "pdr": 0.496243
+  },
+  {
+    "time": 290.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.7362,
+    "delay_ran_5g": 3.7362,
+    "pdr": 0.889162
+  },
+  {
+    "time": 300.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.9121,
+    "delay_ran_5g": 3.9121,
+    "pdr": 0.86956
+  },
+  {
+    "time": 310.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.0947,
+    "delay_ran_5g": 4.0947,
+    "pdr": 0.68711
+  },
+  {
+    "time": 320.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.28,
+    "delay_ran_5g": 4.28,
+    "pdr": 0.751695
+  },
+  {
+    "time": 330.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.467,
+    "delay_ran_5g": 4.467,
+    "pdr": 0.814328
+  },
+  {
+    "time": 340.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.6591,
+    "delay_ran_5g": 4.6591,
+    "pdr": 0.569242
+  },
+  {
+    "time": 350.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 4.8557,
+    "delay_ran_5g": 4.8557,
+    "pdr": 0.685639
+  },
+  {
+    "time": 360.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 5.0563,
+    "delay_ran_5g": 5.0563,
+    "pdr": 0.294621
+  },
+  {
+    "time": 370.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 5.2605,
+    "delay_ran_5g": 5.2605,
+    "pdr": 0.22943999999999998
+  },
+  {
+    "time": 380.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 5.4647,
+    "delay_ran_5g": 5.4647,
+    "pdr": 0.270123
+  },
+  {
+    "time": 390.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 5.6682,
+    "delay_ran_5g": 5.6682,
+    "pdr": 0.577736
+  },
+  {
+    "time": 400.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 5.8746,
+    "delay_ran_5g": 5.8746,
+    "pdr": 0.329993
+  },
+  {
+    "time": 410.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 6.0836,
+    "delay_ran_5g": 6.0836,
+    "pdr": 0.36339799999999994
+  },
+  {
+    "time": 420.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 6.295,
+    "delay_ran_5g": 6.295,
+    "pdr": 0.183888
+  },
+  {
+    "time": 430.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 6.5086,
+    "delay_ran_5g": 6.5086,
+    "pdr": 0.229061
+  },
+  {
+    "time": 440.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 6.7214,
+    "delay_ran_5g": 6.7214,
+    "pdr": 0.201757
+  },
+  {
+    "time": 450.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 6.933,
+    "delay_ran_5g": 6.933,
+    "pdr": 0.19614399999999999
+  },
+  {
+    "time": 460.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.1466,
+    "delay_ran_5g": 7.1466,
+    "pdr": 0.09960000000000001
+  },
+  {
+    "time": 470.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.3619,
+    "delay_ran_5g": 7.3619,
+    "pdr": 0.37607999999999997
+  },
+  {
+    "time": 480.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.5788,
+    "delay_ran_5g": 7.5788,
+    "pdr": 0.289904
+  },
+  {
+    "time": 490.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.7973,
+    "delay_ran_5g": 7.7973,
+    "pdr": 0.016948
+  },
+  {
+    "time": 500.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.9091,
+    "delay_ran_5g": 7.9091,
+    "pdr": 0.19532699999999997
+  },
+  {
+    "time": 510.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.8894,
+    "delay_ran_5g": 7.8894,
+    "pdr": 0.18122699999999997
+  },
+  {
+    "time": 520.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.8697,
+    "delay_ran_5g": 7.8697,
+    "pdr": 0.05564
+  },
+  {
+    "time": 530.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.85,
+    "delay_ran_5g": 7.85,
+    "pdr": 0.112783
+  },
+  {
+    "time": 540.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.8304,
+    "delay_ran_5g": 7.8304,
+    "pdr": 0.29596
+  },
+  {
+    "time": 550.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.8108,
+    "delay_ran_5g": 7.8108,
+    "pdr": 0.125804
+  },
+  {
+    "time": 560.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.7912,
+    "delay_ran_5g": 7.7912,
+    "pdr": 0.202771
+  },
+  {
+    "time": 570.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.7716,
+    "delay_ran_5g": 7.7716,
+    "pdr": 0.176694
+  },
+  {
+    "time": 580.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.7521,
+    "delay_ran_5g": 7.7521,
+    "pdr": 0.0
+  },
+  {
+    "time": 590.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.7326,
+    "delay_ran_5g": 7.7326,
+    "pdr": 0.261565
+  },
+  {
+    "time": 600.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.7131,
+    "delay_ran_5g": 7.7131,
+    "pdr": 0.253556
+  },
+  {
+    "time": 610.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 7.6937,
+    "delay_ran_5g": 7.6937,
+    "pdr": 0.0
+  }
+]

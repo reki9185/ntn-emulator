@@ -39,8 +39,10 @@ func main() {
 	xnPeer := flag.String("xn-peer", "", "TCP address of RAN-1 Xn context server, e.g. 127.0.0.1:9001 (target RAN only)")
 	// -start-time: Synchronize timeline start to an absolute UNIX timestamp or "now+Ns" format
 	startTimeStr := flag.String("start-time", "", "Timeline start time (UNIX timestamp or 'now+10s'). Default: start immediately")
+	// -single-ran: Enable single-RAN mode where link parameters change but no handovers occur
+	singleRan := flag.Bool("single-ran", false, "Enable single-RAN mode (link parameters change, no handovers)")
 	flag.Parse()
-	
+
 	// Parse scheduled start time if provided
 	var scheduledStartTime *time.Time
 	if *startTimeStr != "" {
@@ -162,24 +164,40 @@ func main() {
 
 	// Start RAN Control Plane Server to accept UE connections
 	log.Println("\n[Step 3] Starting RAN Control Plane Server...")
-	// ── Unified RAN Mode: Continuous Bidirectional Handover ────────────────────
-	// Create Xn server if -xn-listen is set (serves UE context to peer RAN when needed).
-	var xnSrv *ran.XnServer
-	if *xnListen != "" {
-		xnSrv = ran.NewXnServer(*xnListen)
-		if err := xnSrv.Start(); err != nil {
-			log.Fatalf("Failed to start Xn server: %v", err)
-		}
-		defer xnSrv.Stop()
-		log.Printf("✓ Xn context server started on %s\n", *xnListen)
-	}
-
-	// Start continuous Handover Controller in the background
-	if *xnPeer != "" {
-		log.Printf("\n🛰️  Continuous Handover mode enabled (xn-peer=%s)\n", *xnPeer)
-		go ran.RunHandoverController(ngapClient, ranCfg, xnSrv, *xnPeer, scheduledStartTime)
+	
+	// ── RAN Operation Mode Selection ───────────────────────────────────────────
+	// Choose between Single-RAN mode (link params only) or Handover mode (multi-RAN)
+	
+	var xnSrv *ran.XnServer // Xn server for context sharing (nil in single-RAN mode)
+	
+	if *singleRan {
+		// ── Single-RAN Mode: Dynamic link parameters, no handovers ────────────
+		log.Println("\n🛰️  Single-RAN mode enabled")
+		log.Println("   📡 Link parameters will change dynamically over time")
+		log.Println("   ⚠️  Handover functionality disabled (ignoring -xn-listen and -xn-peer)")
+		
+		// Start single-RAN controller in background
+		go ran.RunSingleRANModeController(ranCfg, scheduledStartTime)
+		
 	} else {
-		log.Printf("\n🛰️  No -xn-peer provided. Handover controller disabled. (Source-only mode)\n")
+		// ── Multi-RAN Handover Mode: Continuous Bidirectional Handover ────────
+		// Create Xn server if -xn-listen is set (serves UE context to peer RAN when needed).
+		if *xnListen != "" {
+			xnSrv = ran.NewXnServer(*xnListen)
+			if err := xnSrv.Start(); err != nil {
+				log.Fatalf("Failed to start Xn server: %v", err)
+			}
+			defer xnSrv.Stop()
+			log.Printf("✓ Xn context server started on %s\n", *xnListen)
+		}
+
+		// Start continuous Handover Controller in the background
+		if *xnPeer != "" {
+			log.Printf("\n🛰️  Continuous Handover mode enabled (xn-peer=%s)\n", *xnPeer)
+			go ran.RunHandoverController(ngapClient, ranCfg, xnSrv, *xnPeer, scheduledStartTime)
+		} else {
+			log.Printf("\n🛰️  No -xn-peer provided. Handover controller disabled. (Source-only mode)\n")
+		}
 	}
 
 	// Always start the Control Plane listener to handle normal UE registrations
@@ -263,7 +281,7 @@ func main() {
 //   - Relative time from now: "now+10s", "now+5m", "now+1h"
 func parseStartTime(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
-	
+
 	// Handle "now+duration" format
 	if strings.HasPrefix(s, "now+") || strings.HasPrefix(s, "now-") {
 		durationStr := s[3:] // Skip "now"
@@ -273,13 +291,13 @@ func parseStartTime(s string) (time.Time, error) {
 		}
 		return time.Now().Add(duration), nil
 	}
-	
+
 	// Handle UNIX timestamp (with optional fractional seconds)
 	var timestamp float64
 	if _, err := fmt.Sscanf(s, "%f", &timestamp); err != nil {
 		return time.Time{}, fmt.Errorf("expected UNIX timestamp or 'now+duration', got '%s'", s)
 	}
-	
+
 	sec := int64(timestamp)
 	nsec := int64((timestamp - float64(sec)) * 1e9)
 	return time.Unix(sec, nsec), nil
