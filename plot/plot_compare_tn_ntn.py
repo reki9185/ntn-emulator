@@ -135,20 +135,22 @@ def plot_comparison(tn_file, ntn_file, output_dir, start_time_min=9.0, duration=
     # ============================================================
     # Plot 1: Bitrate Comparison
     # ============================================================
-    ax1 = fig.add_subplot(gs[0])
+    # ax1 = fig.add_subplot(gs[0])
     
-    ax1.plot(tn_times, tn_bitrates, linestyle='-', linewidth=2,
-            color=color_tn, label='TN (Terrestrial)', alpha=0.8)
-    ax1.plot(ntn_times, ntn_bitrates, linestyle='-', linewidth=2,
-            color=color_ntn, label='NTN (Satellite)', alpha=0.8)
+    # ax1.plot(tn_times, tn_bitrates, linestyle='-', linewidth=2,
+    #         color=color_tn, label='TN (Terrestrial)', alpha=0.8)
+    # ax1.plot(ntn_times, ntn_bitrates, linestyle='-', linewidth=2,
+    #         color=color_ntn, label='NTN (Satellite)', alpha=0.8)
     
-    ax1.set_ylabel('Bitrate (Mbps)', fontsize=12, fontweight='bold')
-    ax1.set_xlabel('Time (s)', fontsize=11)
-    ax1.set_title('Bitrate Comparison: TN vs NTN', 
-                 fontsize=14, fontweight='bold', pad=10)
-    ax1.grid(True, alpha=0.3, linestyle='--')
-    ax1.set_xlim(0, duration)
-    ax1.legend(loc='upper right', fontsize=11)
+    # ax1.set_ylabel('Bitrate (Mbps)', fontsize=12, fontweight='bold')
+    # ax1.set_xlabel('Time (s)', fontsize=11, fontweight='bold')
+    # ax1.grid(True, alpha=0.3, linestyle='--')
+    # ax1.set_xlim(0, duration)
+    # ax1.legend(['TN (Terrestrial Network)', 'NTN (Satellite)'], 
+    #       loc='lower center', 
+    #       bbox_to_anchor=(0.5, 1.05), 
+    #       ncol=2, fontsize=18,
+    #       frameon=False)
     
     # ============================================================
     # Plot 2: PDR Comparison (1 - lost/total)
@@ -160,40 +162,36 @@ def plot_comparison(tn_file, ntn_file, output_dir, start_time_min=9.0, duration=
     ax2.plot(ntn_times, ntn_pdrs, linestyle='-', linewidth=2,
             color=color_ntn, label='NTN (Satellite)', alpha=0.8)
     
-    ax2.set_ylabel('PDR (%)', fontsize=12, fontweight='bold')
-    ax2.set_xlabel('Time (s)', fontsize=11)
-    ax2.set_title('Packet Delivery Ratio: TN vs NTN', 
-                 fontsize=14, fontweight='bold', pad=10)
+    ax2.set_ylabel('Packet Delivery Ratio (%)', fontsize=12, fontweight='bold')
+    ax2.set_xlabel('Time (s)', fontsize=11, fontweight='bold')
     ax2.grid(True, alpha=0.3, linestyle='--')
     ax2.set_xlim(0, duration)
     ax2.set_ylim(-5, 105)
-    ax2.legend(loc='lower right', fontsize=11)
+    # ax2.legend(loc='lower right', fontsize=11)
     
     # ============================================================
     # Plot 3: Packet Loss Ratio Comparison (lost/total)
     # ============================================================
-    ax3 = fig.add_subplot(gs[2])
+    # ax3 = fig.add_subplot(gs[2])
     
-    ax3.plot(tn_times, tn_loss_ratios, linestyle='-', linewidth=2,
-            color=color_tn, label='TN (Terrestrial)', alpha=0.8)
-    ax3.plot(ntn_times, ntn_loss_ratios, linestyle='-', linewidth=2,
-            color=color_ntn, label='NTN (Satellite)', alpha=0.8)
+    # ax3.plot(tn_times, tn_loss_ratios, linestyle='-', linewidth=2,
+    #         color=color_tn, label='TN (Terrestrial)', alpha=0.8)
+    # ax3.plot(ntn_times, ntn_loss_ratios, linestyle='-', linewidth=2,
+    #         color=color_ntn, label='NTN (Satellite)', alpha=0.8)
     
-    ax3.set_ylabel('Packet Loss Ratio (%)', fontsize=12, fontweight='bold')
-    ax3.set_xlabel('Time (s)', fontsize=11)
-    ax3.set_title('Packet Loss Ratio: TN vs NTN', 
-                 fontsize=14, fontweight='bold', pad=10)
-    ax3.grid(True, alpha=0.3, linestyle='--')
-    ax3.set_xlim(0, duration)
-    ax3.set_ylim(-5, 105)
-    ax3.legend(loc='upper right', fontsize=11)
+    # ax3.set_ylabel('Packet Loss Ratio (%)', fontsize=12, fontweight='bold')
+    # ax3.set_xlabel('Time (s)', fontsize=11, fontweight='bold')
+    # ax3.grid(True, alpha=0.3, linestyle='--')
+    # ax3.set_xlim(0, duration)
+    # ax3.set_ylim(-5, 105)
+    # ax3.legend(loc='upper right', fontsize=11)
     
     # Save figure
     plt.tight_layout()
     
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / 'tn_vs_ntn_comparison.png'
+    output_file = output_dir / 'tn_vs_ntn_comparison2.png'
     
     fig.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"✓ Comparison plot saved to: {output_file}")

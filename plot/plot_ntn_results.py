@@ -10,10 +10,12 @@ This script creates a multi-panel visualization of:
 5. Distance from channel model (ntn_channel_model.json)
 6. Elevation from channel model (ntn_channel_model.json)
 
-Time synchronization: 
-- First 20s in experiment is PDR=100% (for synchronization)
-- Time point 0 in ntn_channel_model.json = 20s in experiment
-- All plots ignore the first 20s synchronization period
+Time alignment: 
+- iperf-s.txt: 9s in file = 0s in plot (offset -9s)
+- experiment.json: 20s in file = 0s in plot (offset -20s)
+- Time range: 0s to 600s on x-axis
+- iperf actual file time: 9s to 609s
+- experiment actual file time: 20s to 620s
 """
 
 import json
@@ -154,28 +156,47 @@ def plot_results(data_dir):
     print(f"✓ Loaded iperf-s.txt: {len(iperf_data)} intervals")
     print(f"✓ Loaded ntn_channel_model.json: {len(channel_data['time_points'])} data points")
     
-    # Filter data to ignore first 20s (synchronization period) and after 600s (max time)
-    SYNC_PERIOD = 20.0
+    # Time alignment settings:
+    # - iperf-s.txt: 9s in file = 0s in plot (offset = -9s)
+    # - experiment.json: 20s in file = 0s in plot (offset = -20s)
+    # - Max plot time: 600s
+    # - So iperf goes from 9s to 609s (file time), experiment from 20s to 620s (file time)
+    IPERF_OFFSET = 9.0
+    EXPERIMENT_OFFSET = 20.0
     MAX_TIME = 600.0
     
-    ue_log_filtered = [(t, pdr) for t, pdr in ue_log_data if SYNC_PERIOD <= t <= MAX_TIME]
-    iperf_filtered = [(ts, te, br, l, tot) for ts, te, br, l, tot in iperf_data if SYNC_PERIOD <= ts <= MAX_TIME]
+    # Filter and transform iperf data: keep data from 9s to 609s, then subtract 9s offset
+    iperf_filtered = []
+    for ts, te, br, l, tot in iperf_data:
+        if IPERF_OFFSET <= ts <= (IPERF_OFFSET + MAX_TIME):
+            # Apply time offset: subtract IPERF_OFFSET to align 9s -> 0s
+            ts_aligned = ts - IPERF_OFFSET
+            te_aligned = te - IPERF_OFFSET
+            iperf_filtered.append((ts_aligned, te_aligned, br, l, tot))
     
-    # For channel model: time_point 0 = 20s in experiment
-    # So we add SYNC_PERIOD (20s) to convert time_point to actual experiment time
+    # Filter and transform UE log data: keep data from 20s to 620s, then subtract 20s offset
+    ue_log_filtered = []
+    for t, pdr in ue_log_data:
+        if EXPERIMENT_OFFSET <= t <= (EXPERIMENT_OFFSET + MAX_TIME):
+            # Apply time offset: subtract EXPERIMENT_OFFSET to align 20s -> 0s
+            t_aligned = t - EXPERIMENT_OFFSET
+            ue_log_filtered.append((t_aligned, pdr))
+    
+    # For channel model: time_point 0 = 20s in experiment file
+    # After alignment: time_point 0 should map to 0s in plot (since exp 20s = 0s)
     window_size = channel_data['window_size_s']
-    channel_times_all = channel_data['time_points'] * window_size + SYNC_PERIOD
+    channel_times_all = channel_data['time_points'] * window_size
     
-    # Filter channel model data to match time range
+    # Filter channel model data to match time range (0 to 600s after alignment)
     channel_mask = channel_times_all <= MAX_TIME
     channel_times = channel_times_all[channel_mask]
     channel_snr = channel_data['snr'][channel_mask]
     channel_distance = channel_data['distance'][channel_mask]
     channel_elevation = channel_data['elevation'][channel_mask]
     
-    print(f"\nAfter filtering (time range: {SYNC_PERIOD}s - {MAX_TIME}s):")
-    print(f"  UE log: {len(ue_log_filtered)} points")
-    print(f"  iPerf: {len(iperf_filtered)} intervals")
+    print(f"\nAfter time alignment and filtering:")
+    print(f"  iPerf: file time {IPERF_OFFSET}s-{IPERF_OFFSET + MAX_TIME}s -> plot time 0s-{MAX_TIME}s ({len(iperf_filtered)} intervals)")
+    print(f"  Experiment: file time {EXPERIMENT_OFFSET}s-{EXPERIMENT_OFFSET + MAX_TIME}s -> plot time 0s-{MAX_TIME}s ({len(ue_log_filtered)} points)")
     print(f"  Channel model: {len(channel_times)} points")
     
     # Colors for consistency
@@ -266,32 +287,15 @@ def plot_results(data_dir):
     print(f"\n✓ Figure 1 saved to: {output_file1}")
     
     # ===========================================================================
-    # FIGURE 2: Plots 3, 4, 5, 6 (iPerf PDR, SNR, Distance, Elevation)
+    # FIGURE 2: Plots 4, 5 (SNR, Distance)
     # ===========================================================================
-    fig2 = plt.figure(figsize=(15, 14))
-    gs2 = gridspec.GridSpec(4, 1, hspace=0.4)
+    fig2 = plt.figure(figsize=(15, 8))
+    gs2 = gridspec.GridSpec(2, 1, hspace=0.35)
     
     # ============================================================
-    # Figure 2 - Plot 3: PDR calculated from iPerf (1 - lost/total) - YELLOW
+    # Figure 2 - Plot 1: SNR from Channel Model
     # ============================================================
-    ax2_3 = fig2.add_subplot(gs2[0])
-    
-    if iperf_filtered:
-        # Reuse the same data
-        ax2_3.plot(times_mid, iperf_pdrs, linestyle='-', linewidth=2,
-                color=color_iperf_pdr_fig2, label='iPerf PDR (1-lost/total)')
-        ax2_3.set_ylabel('PDR (%)', fontsize=12, fontweight='bold')
-        ax2_3.set_xlabel('Time (s)', fontsize=11)
-        ax2_3.set_title('Packet Delivery Ratio from iPerf)', 
-                     fontsize=13, fontweight='bold', pad=10)
-        ax2_3.grid(True, alpha=0.3, linestyle='--')
-        ax2_3.set_ylim(-5, 105)
-        ax2_3.legend(loc='upper right')
-    
-    # ============================================================
-    # Figure 2 - Plot 4: SNR from Channel Model
-    # ============================================================
-    ax2_4 = fig2.add_subplot(gs2[1])
+    ax2_4 = fig2.add_subplot(gs2[0])
     
     ax2_4.plot(channel_times, channel_snr, linestyle='-',
             linewidth=2, color=color_snr, label='SNR')
@@ -304,9 +308,9 @@ def plot_results(data_dir):
     ax2_4.legend(loc='upper right')
     
     # ============================================================
-    # Figure 2 - Plot 5: Distance from Channel Model
+    # Figure 2 - Plot 2: Distance from Channel Model
     # ============================================================
-    ax2_5 = fig2.add_subplot(gs2[2])
+    ax2_5 = fig2.add_subplot(gs2[1])
     
     ax2_5.plot(channel_times, channel_distance, linestyle='-',
             linewidth=2, color=color_distance, label='Distance')
@@ -315,21 +319,7 @@ def plot_results(data_dir):
     ax2_5.set_title('Satellite-UE Distance', 
                  fontsize=13, fontweight='bold', pad=10)
     ax2_5.grid(True, alpha=0.3, linestyle='--')
-    ax2_5.legend(loc='upper right')
-    
-    # ============================================================
-    # Figure 2 - Plot 6: Elevation from Channel Model
-    # ============================================================
-    ax2_6 = fig2.add_subplot(gs2[3])
-    
-    ax2_6.plot(channel_times, channel_elevation, linestyle='-',
-            linewidth=2, color=color_elevation, label='Elevation Angle')
-    ax2_6.set_ylabel('Elevation (degrees)', fontsize=12, fontweight='bold')
-    ax2_6.set_xlabel('Time (s)', fontsize=11)
-    ax2_6.set_title('Satellite Elevation Angle', 
-                 fontsize=13, fontweight='bold', pad=10)
-    ax2_6.grid(True, alpha=0.3, linestyle='--')
-    ax2_6.legend(loc='upper right')
+    ax2_5.legend(loc='lower right')
     
     # Adjust layout and save Figure 2
     plt.tight_layout(rect=[0, 0, 1, 0.99])
@@ -404,9 +394,12 @@ Required files in data directory:
   - ntn_channel_model.json (channel characteristics)
   - experiment.json (optional, for reference)
 
-Time synchronization:
-  - First 20s: PDR=100% (synchronization period, excluded from plots)
-  - t=0 in ntn_channel_model.json corresponds to t=20s in experiment
+Time alignment:
+  - iperf-s.txt: 9s in file = 0s in plot (offset -9s)
+  - experiment.json: 20s in file = 0s in plot (offset -20s)
+  - X-axis displays: 0s to 600s
+  - iperf file range: 9s to 609s
+  - experiment file range: 20s to 620s
         """
     )
     parser.add_argument('data_dir', nargs='?', default='iperf-20260330',
