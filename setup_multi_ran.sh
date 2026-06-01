@@ -32,6 +32,14 @@ usage() {
     exit 1
 }
 
+delete_if_exists() {
+    local dev=$1
+    if ip link show "$dev" &>/dev/null; then
+        echo "Deleting device: $dev"
+        sudo ip link delete "$dev" 2>/dev/null || true
+    fi
+}
+
 setup_network_namespace() {
     # Remove existing network namespace
     echo "Removing existing network namespace..."
@@ -94,17 +102,22 @@ setup_network_namespace() {
     echo
 
     # Enable IP forwarding in RAN (router between UE and Core)
-    echo "Enabling IP forwarding in RAN namespace..."
+    echo "Enabling IP forwarding..."
+    sudo sysctl -w net.ipv4.ip_forward=1 > /dev/null
     sudo ip netns exec $RAN_NS sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    sudo sysctl -w net.ipv4.conf.all.rp_filter=0 > /dev/null
+    sudo sysctl -w net.ipv4.conf.default.rp_filter=0 > /dev/null
+    sudo sysctl -w net.ipv4.conf.$VETH_CP_HOST.rp_filter=0 > /dev/null 2>&1 || true
     echo
 
     # Set up routing on Host
     echo "Setting up routing on Host..."
     # Route to UE veth subnet via RAN
     sudo ip route add 10.0.2.0/24 via $CP_RAN1_IP dev $VETH_CP_HOST 2>/dev/null || true
+    # Keep explicit host routes to both RAN control-plane IPs on the veth.
+    sudo ip route replace $CP_RAN1_IP/32 dev $VETH_CP_HOST src $CP_HOST_IP
+    sudo ip route replace $CP_RAN2_IP/32 dev $VETH_CP_HOST src $CP_HOST_IP
     # Note: Do NOT add route for 10.60.0.0/x - UPF handles this via upfgtp interface
-    # Enable IP forwarding on host
-    sudo sysctl -w net.ipv4.ip_forward=1 > /dev/null
     echo
 
     # Set up iptables for NAT (internet access from UE)
@@ -122,7 +135,6 @@ setup_network_namespace() {
         echo "  NAT via interface: $DEFAULT_IF"
         sudo iptables -t nat -A POSTROUTING -s 10.0.2.0/24 -o $DEFAULT_IF -j MASQUERADE 2>/dev/null || true
         sudo iptables -t nat -A POSTROUTING -s 10.60.0.0/16 -o $DEFAULT_IF -j MASQUERADE 2>/dev/null || true
-        sudo iptables -t nat -A POSTROUTING -o $DEFAULT_IF -j MASQUERADE 2>/dev/null || true
     fi
     echo
 
@@ -138,15 +150,16 @@ setup_network_namespace() {
 cleanup_network_namespace() {
     echo "Removing network namespace..."
 
-    # Bring down interface
-    sudo ip link set $VETH_CP_HOST down 2>/dev/null || true
-
     # Delete veth pairs
-    sudo ip link delete $VETH_CP_HOST 2>/dev/null || true
-    sudo ip link delete $VETH_UP_RAN 2>/dev/null || true
+    delete_if_exists "$VETH_CP_HOST"
+    delete_if_exists "$VETH_CP_RAN"
+    delete_if_exists "$VETH_UP_RAN"
+    delete_if_exists "$VETH_UP_UE"
 
     # Remove routes
     sudo ip route del 10.0.2.0/24 2>/dev/null || true
+    sudo ip route del $CP_RAN1_IP/32 2>/dev/null || true
+    sudo ip route del $CP_RAN2_IP/32 2>/dev/null || true
     # Note: Do NOT remove 10.60.0.0/x routes - those belong to UPF
 
     # Remove iptables rules
@@ -154,7 +167,6 @@ cleanup_network_namespace() {
     if [ -n "$DEFAULT_IF" ]; then
         sudo iptables -t nat -D POSTROUTING -s 10.0.2.0/24 -o $DEFAULT_IF -j MASQUERADE 2>/dev/null || true
         sudo iptables -t nat -D POSTROUTING -s 10.60.0.0/16 -o $DEFAULT_IF -j MASQUERADE 2>/dev/null || true
-        sudo iptables -t nat -D POSTROUTING -o $DEFAULT_IF -j MASQUERADE 2>/dev/null || true
     fi
     sudo iptables -D FORWARD -i $VETH_CP_HOST -j ACCEPT 2>/dev/null || true
     sudo iptables -D FORWARD -o $VETH_CP_HOST -j ACCEPT 2>/dev/null || true

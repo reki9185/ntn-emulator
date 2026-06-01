@@ -131,7 +131,19 @@ sudo ip netns exec ue_ns bin/ntn_ue
 sudo ip netns exec ue_ns ping -c 3 -I ueTun0 8.8.8.8
 ```
 
-7a. Test Single-RAN Mode (Dynamic Link Parameters)
+7. Setting NTN-link
+- ~/home/ntn/ntn-emulator/configs/ntn-link.yaml
+  ```
+  state:
+    file: "/home/ntn/ntn-emulator/ntn_state.json"
+    poll_interval_ms: 100  # How often to check for updates
+  ```
+- ~/home/ntn/ntn-emulator/configs/ran.yaml & ~/home/ntn/ntn-emulator/configs/ue.yaml
+  ```
+  ntnStateFile: "/home/ntn/ntn-emulator/ntn_state.json"
+  ```
+
+8a. Test Single-RAN Mode (Dynamic Link Parameters)
 
 Single-RAN mode allows channel characteristics (delay, PDR) to change over time without handovers.
 
@@ -147,7 +159,7 @@ sudo ip netns exec ue_ns bin/ntn_ue -config configs/ue.yaml
 sudo ip netns exec ue_ns ping -I ueTun0 8.8.8.8
 ```
 
-7b. Test Multi-RAN Handover Mode
+8b. Test Multi-RAN Handover Mode
 
 Setup multi-ran namespace and start free5GC.
 
@@ -173,7 +185,7 @@ sudo ip netns exec ue_ns bin/ntn_ue -config configs/ue.yaml
 sudo ip netns exec ue_ns ping -I ueTun0 8.8.8.8
 ```
 
-8. iperf3
+9. iperf3
 
 Server
 
