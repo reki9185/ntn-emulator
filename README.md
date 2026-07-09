@@ -173,7 +173,7 @@ Client
 ```bash
 sudo ip netns exec ue_ns bash
 sudo ip route add 10.0.1.0/24 dev ueTun0
-sudo iperf3 -c 10.0.1.24 -B 10.60.0.1 -u -b 5M -t 30 -i 0.1 --forceflush | ts '%H:%M:%.S'
+sudo iperf3 -c 10.0.1.24 -B 10.60.0.1 -u -b 5M -t 30 -i 0.05 --forceflush | ts '%H:%M:%.S'
 ```
 
 ### Clean
