@@ -94,6 +94,13 @@ func (l *Link) Start() error {
 	return nil
 }
 
+// SetScheduledStartTime aligns this link's timeline to a shared absolute t=0.
+func (l *Link) SetScheduledStartTime(t time.Time) {
+	if l.player != nil {
+		l.player.SetScheduledStartTime(t)
+	}
+}
+
 // Stop stops the NTN link
 func (l *Link) Stop() {
 	if l.player != nil {

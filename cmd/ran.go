@@ -26,6 +26,7 @@ import (
 func main() {
 	// Configure log format with microsecond precision
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	processStartTime := time.Now()
 
 	// Parse command-line arguments
 	configPath := flag.String("config", "configs/ran.yaml", "Path to RAN config file")
@@ -50,6 +51,10 @@ func main() {
 		}
 		scheduledStartTime = &t
 		log.Printf("⏱️  Scheduled timeline start: %s (UNIX: %d)", t.Format("2006-01-02 15:04:05.000"), t.Unix())
+	} else {
+		// Default to process start so late-created components do not replay the
+		// same timeline from t=0 again during registration or handover.
+		scheduledStartTime = &processStartTime
 	}
 
 	// Load RAN configuration
@@ -212,7 +217,7 @@ func main() {
 			go func(c net.Conn, id int64) {
 				defer c.Close()
 
-				handler := ran.NewUEHandler(c, ngapClient, id, plmnID, tai, ranCfg, xnSrv)
+				handler := ran.NewUEHandler(c, ngapClient, id, plmnID, tai, ranCfg, xnSrv, scheduledStartTime)
 				if err := handler.HandleRegistration(); err != nil {
 					log.Printf("❌ UE registration failed: %v\n", err)
 				} else {

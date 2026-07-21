@@ -158,6 +158,7 @@ func RunHandoverController(ngapClient *ngap.NGAPClient, ranCfg *config.RANConfig
 				newDLTEID,
 				ueCtx.IMSI,
 				ranCfg.GNB.NTNStateFile,
+				scheduledStartTime,
 			)
 			if err != nil {
 				log.Printf("❌ create data plane: %v\n", err)

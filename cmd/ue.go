@@ -24,6 +24,7 @@ import (
 func main() {
 	// Configure log format with microsecond precision
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	processStartTime := time.Now()
 
 	// Parse command-line arguments
 	configPath := flag.String("config", "configs/ue.yaml", "Path to UE config file")
@@ -43,6 +44,10 @@ func main() {
 		}
 		scheduledStartTime = &t
 		log.Printf("⏱️  Scheduled timeline start: %s (UNIX: %d)", t.Format("2006-01-02 15:04:05.000"), t.Unix())
+	} else {
+		// Default to process start so the UE's satellite watcher stays aligned
+		// with the rest of the session even if it starts after registration.
+		scheduledStartTime = &processStartTime
 	}
 
 	// Load UE configuration

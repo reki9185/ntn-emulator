@@ -139,6 +139,19 @@ Setup multi-ran namespace and start free5GC.
 sudo ./setup_multi_ran.sh up
 ```
 
+Start UE and RAN
+
+```
+sudo ./start_multi_ran.sh
+```
+
+Then, follow the log
+
+```
+tail -f /tmp/ntn-multi-ran-logs/ran1.log /tmp/ntn-multi-ran-logs/ran2.log /tmp/ntn-multi-ran-logs/ue.log
+```
+
+If the above can't run, please use the following command instead.
 ```bash
 # Terminal 1: Start RAN-1 (STARLINK-180)
 sudo ip netns exec ran_ns bin/ntn_ran \
@@ -173,7 +186,7 @@ Client
 ```bash
 sudo ip netns exec ue_ns bash
 sudo ip route add 10.0.1.0/24 dev ueTun0
-sudo iperf3 -c 10.0.1.24 -B 10.60.0.1 -u -b 5M -t 30 -i 0.1 --forceflush | ts '%H:%M:%.S'
+sudo iperf3 -c 10.0.1.24 -B 10.60.0.1 -u -b 5M -t 30 -i 0.05 --forceflush | ts '%H:%M:%.S'
 ```
 
 ### Clean

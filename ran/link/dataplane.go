@@ -49,8 +49,33 @@ type RANDataPlane struct {
 	wg     sync.WaitGroup
 }
 
-// NewRANDataPlane creates a new RAN data plane server
-func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr string, ulTEID, dlTEID uint32, imsi string, ntnStateFile string) (*RANDataPlane, error) {
+// rememberUEAddr stores the latest UE UDP source address.
+// During handover, the target RAN may receive regular uplink traffic before or
+// instead of a dedicated INIT packet, so downlink forwarding must not depend
+// solely on that control message arriving first.
+func (rdp *RANDataPlane) rememberUEAddr(ueAddr *net.UDPAddr) {
+	if ueAddr == nil {
+		return
+	}
+
+	ueAddrCopy := *ueAddr
+
+	rdp.ueAddrLock.Lock()
+	defer rdp.ueAddrLock.Unlock()
+
+	if rdp.ueAddr != nil &&
+		rdp.ueAddr.IP.Equal(ueAddrCopy.IP) &&
+		rdp.ueAddr.Port == ueAddrCopy.Port {
+		return
+	}
+
+	rdp.ueAddr = &ueAddrCopy
+	log.Printf("📡 RAN: Updated UE data plane address to %s\n", ueAddrCopy.String())
+}
+
+// NewRANDataPlane creates a new RAN data plane server.
+// If scheduledStartTime is provided, the NTN timeline is aligned to that shared t=0.
+func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr string, ulTEID, dlTEID uint32, imsi string, ntnStateFile string, scheduledStartTime *time.Time) (*RANDataPlane, error) {
 	// Parse UPF address
 	upfUDPAddr, err := net.ResolveUDPAddr("udp", upfAddr)
 	if err != nil {
@@ -66,6 +91,9 @@ func NewRANDataPlane(ip string, port int, n3IP string, n3Port int, upfAddr strin
 		if err != nil {
 			cancel()
 			return nil, fmt.Errorf("failed to create NTN link: %w", err)
+		}
+		if scheduledStartTime != nil {
+			ntnLink.SetScheduledStartTime(*scheduledStartTime)
 		}
 	}
 
@@ -202,6 +230,10 @@ func (rdp *RANDataPlane) receiveFromUE() {
 		data := make([]byte, n)
 		copy(data, buffer[:n])
 
+		// Always learn the latest UE source address from uplink traffic.
+		// This makes handover robust even if the INIT packet is delayed or lost.
+		rdp.rememberUEAddr(ueAddr)
+
 		// Check if this is an initial packet
 		if n > len(UE_DATA_PLANE_INITIAL_PACKET) && string(data[:len(UE_DATA_PLANE_INITIAL_PACKET)]) == UE_DATA_PLANE_INITIAL_PACKET {
 			rdp.handleInitialPacket(ueAddr, data)
@@ -226,9 +258,7 @@ func (rdp *RANDataPlane) handleInitialPacket(ueAddr *net.UDPAddr, data []byte) {
 	log.Printf("📡 RAN: UE registered from %s (IMSI: %s)\n", ueAddr.String(), imsi)
 
 	// Store UE address (removed strict IMSI validation - was blocking traffic)
-	rdp.ueAddrLock.Lock()
-	rdp.ueAddr = ueAddr
-	rdp.ueAddrLock.Unlock()
+	rdp.rememberUEAddr(ueAddr)
 
 	log.Printf("✅ RAN: UE data plane connection established (%s)\n", ueAddr.String())
 }
@@ -297,7 +327,7 @@ func (rdp *RANDataPlane) forwardUplinkToUPF() {
 			binary.BigEndian.PutUint32(gtpHeader[4:8], rdp.ulTEID)            // TEID
 			// Sequence number fields [8:12] = 0x00000000
 
-			log.Printf("📤 RAN->UPF: Sending GTP-U packet (TEID=%d, payload=%d bytes, dest=%s)\n", rdp.ulTEID, len(packet), rdp.upfAddr.String())
+			// log.Printf("📤 RAN->UPF: Sending GTP-U packet (TEID=%d, payload=%d bytes, dest=%s)\n", rdp.ulTEID, len(packet), rdp.upfAddr.String())
 
 			// Combine header + payload
 			gtpPacket := append(gtpHeader, packet...)
@@ -349,7 +379,7 @@ func (rdp *RANDataPlane) forwardDownlinkToUE() {
 
 			// Extract TEID
 			teid := binary.BigEndian.Uint32(gtpPacket[4:8])
-			log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, msgType=0x%02x, len=%d)\n", teid, msgType, len(gtpPacket))
+			// log.Printf("🔽 RAN<-UPF: Downlink GTP packet (TEID=0x%08x, msgType=0x%02x, len=%d)\n", teid, msgType, len(gtpPacket))
 
 			// Discard any End Marker (0xFE) that made it this far through the
 			// scheduler pipeline — it is a teardown signal, not user data.

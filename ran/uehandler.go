@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	"ntn-emulator/config"
 	ranlink "ntn-emulator/ran/link"
@@ -28,12 +29,14 @@ type UEHandler struct {
 	// xnServer, when non-nil, is notified with the UE context after PDU session
 	// establishment so RAN-2 can retrieve it via the Xn interface.
 	xnServer *XnServer
+	// scheduledStartTime aligns the source RAN data plane with the controller timeline.
+	scheduledStartTime *time.Time
 }
 
 // NewUEHandler creates a new UE handler.
 // xnServer, when non-nil, receives the UE context after PDU session establishment
 // so it can be served to the target RAN (RAN-2) via the Xn interface.
-func NewUEHandler(conn net.Conn, ngapClient *ngap.NGAPClient, ranUeNgapID int64, plmnID ngapType.PLMNIdentity, tai ngapType.TAI, ranConfig *config.RANConfig, xnServer *XnServer) *UEHandler {
+func NewUEHandler(conn net.Conn, ngapClient *ngap.NGAPClient, ranUeNgapID int64, plmnID ngapType.PLMNIdentity, tai ngapType.TAI, ranConfig *config.RANConfig, xnServer *XnServer, scheduledStartTime *time.Time) *UEHandler {
 	return &UEHandler{
 		conn:        conn,
 		ngapClient:  ngapClient,
@@ -42,6 +45,7 @@ func NewUEHandler(conn net.Conn, ngapClient *ngap.NGAPClient, ranUeNgapID int64,
 		tai:         tai,
 		ranConfig:   ranConfig,
 		xnServer:    xnServer,
+		scheduledStartTime: scheduledStartTime,
 	}
 }
 
@@ -273,6 +277,7 @@ func (h *UEHandler) HandleRegistration() error {
 		ranUplinkTEID,               // dlTEID: RAN-advertised TEID, UPF places this in GTP header when sending to RAN
 		h.mobileIMSI,
 		h.ranConfig.GNB.NTNStateFile, // Use configured NTN state file path
+		h.scheduledStartTime,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create data plane: %w", err)
