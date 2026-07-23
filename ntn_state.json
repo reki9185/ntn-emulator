@@ -2,28 +2,57 @@
   {
     "time": 0.0,
     "satellite": "STARLINK-180",
-    "delay_ue_ran": 0.0,
-    "delay_ran_5g": 0.0,
-    "pdr": 1.0
+    "delay_ue_ran": 4.6591,
+    "delay_ran_5g": 4.6591,
+    "pdr": 0.814328
+  },
+  {
+    "time": 5.0,
+    "satellite": "STARLINK-180",
+    "delay_ue_ran": 3.9464,
+    "delay_ran_5g": 3.9464,
+    "pdr": 0.79915
+  },
+  {
+    "time": 10.0,
+    "satellite": "STARLINK-31077",
+    "delay_ue_ran": 3.7704,
+    "delay_ran_5g": 3.7704,
+    "pdr": 0.6324580000000001
+  },
+  {
+    "time": 15.0,
+    "satellite": "STARLINK-180",
+    "delay_ue_ran": 4.3175,
+    "delay_ran_5g": 4.3175,
+    "pdr": 0.6358039999999999
   },
   {
     "time": 20.0,
     "event": "handover_start",
+    "satellite": "STARLINK-180",
     "pdr": 0.0
   },
   {
-    "time": 25.0,
+    "time": 20.058169,
     "event": "handover_end",
     "satellite": "STARLINK-181",
-    "delay_ue_ran": 3.0,
-    "delay_ran_5g": 5.0,
-    "pdr": 1.0
+    "delay_ue_ran": 2.7803,
+    "delay_ran_5g": 2.7803,
+    "pdr": 0.9995489999999999
+  },
+  {
+    "time": 25.0,
+    "satellite": "STARLINK-181",
+    "delay_ue_ran": 2.5625,
+    "delay_ran_5g": 2.5625,
+    "pdr": 0.9998
   },
   {
     "time": 30.0,
     "satellite": "STARLINK-181",
-    "delay_ue_ran": 3.0,
-    "delay_ran_5g": 5.0,
+    "delay_ue_ran": 2.5145,
+    "delay_ran_5g": 2.5145,
     "pdr": 1.0
   }
 ]

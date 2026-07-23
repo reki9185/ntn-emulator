@@ -1,0 +1,20 @@
+{
+  "tcp_base_mbps": 5.24,
+  "tcp_recovery_burst_mbps": 35.6,
+  "tcp_retransmissions": 102,
+  "udp_base_mbps": 4.98,
+  "udp_datagrams_per_sec": 442.0,
+  "handover_windows": [
+    [
+      20.0,
+      20.058169
+    ]
+  ],
+  "actual_handover_seconds": 0.05816899999999947,
+  "reference_handover_seconds": 5.0,
+  "measured_tcp_zero_seconds": 6.0,
+  "measured_udp_zero_seconds": 4.0,
+  "tcp_interruption_seconds": 0.06980279999999936,
+  "udp_interruption_seconds": 0.04653519999999958,
+  "tcp_loss_exponent": 1.7
+}
